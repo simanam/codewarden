@@ -1,0 +1,122 @@
+version: '3.8'
+
+services:
+  # ═══════════════════════════════════════════════════════════════
+  # DATABASE LAYER
+  # ═══════════════════════════════════════════════════════════════
+
+  supabase-db:
+    image: supabase/postgres:15.1.0.117
+    container_name: codewarden-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - supabase-data:/var/lib/postgresql/data
+      - ./infrastructure/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════
+  # CACHE / QUEUE LAYER
+  # ═══════════════════════════════════════════════════════════════
+
+  redis:
+    image: redis:7-alpine
+    container_name: codewarden-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════
+  # LOG STORAGE
+  # ═══════════════════════════════════════════════════════════════
+
+  openobserve:
+    image: openobserve/openobserve:latest
+    container_name: codewarden-openobserve
+    ports:
+      - "5080:5080"
+    environment:
+      ZO_ROOT_USER_EMAIL: admin@codewarden.local
+      ZO_ROOT_USER_PASSWORD: admin123
+      ZO_DATA_DIR: /data
+    volumes:
+      - openobserve-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════
+  # APPLICATION LAYER
+  # ═══════════════════════════════════════════════════════════════
+
+  api:
+    build:
+      context: ./packages/api
+      dockerfile: Dockerfile
+    container_name: codewarden-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://postgres:postgres@supabase-db:5432/postgres
+      - REDIS_URL=redis://redis:6379
+      - OPENOBSERVE_URL=http://openobserve:5080
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./packages/api:/app
+      - /app/.venv
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./packages/dashboard
+      dockerfile: Dockerfile.dev
+    container_name: codewarden-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_SUPABASE_URL=http://localhost:8000
+    volumes:
+      - ./packages/dashboard:/app
+      - /app/node_modules
+      - /app/.next
+    restart: unless-stopped
+
+volumes:
+  supabase-data:
+  redis-data:
+  openobserve-data:
+
+networks:
+  default:
+    name: codewarden-network

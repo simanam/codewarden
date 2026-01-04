@@ -1,0 +1,20 @@
+{
+  "name": "codewarden",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CodeWarden - Security and observability platform",
+  "scripts": {
+    "dev": "./scripts/dev.sh start",
+    "dev:api": "cd packages/api && poetry run uvicorn api.main:app --reload",
+    "dev:dashboard": "cd packages/dashboard && pnpm dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "clean": "./scripts/dev.sh clean"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@10.27.0"
+}
