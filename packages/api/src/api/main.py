@@ -1,5 +1,6 @@
 """CodeWarden API - Main Application."""
 
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -7,16 +8,26 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import settings
+from api.routers import events_router, projects_router, telemetry_router, dashboard_router
+
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, settings.log_level.upper()),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
     # Startup
-    print("Starting CodeWarden API...")
+    logger.info("Starting CodeWarden API...")
+    logger.info(f"Environment: {settings.environment}")
+    logger.info(f"Debug mode: {settings.debug}")
     yield
     # Shutdown
-    print("Shutting down CodeWarden API...")
+    logger.info("Shutting down CodeWarden API...")
 
 
 app = FastAPI(
@@ -37,6 +48,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(telemetry_router)  # /v1/telemetry, /v1/evidence, /v1/health
+app.include_router(dashboard_router)  # /api/dashboard/* (for Next.js frontend)
+app.include_router(events_router)     # /api/v1/events (legacy)
+app.include_router(projects_router)   # /api/v1/projects
 
 
 @app.get("/health")

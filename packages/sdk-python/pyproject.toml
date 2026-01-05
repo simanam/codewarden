@@ -48,6 +48,7 @@ optional = true
 
 [tool.poetry.group.fastapi.dependencies]
 fastapi = "^0.115.0"
+starlette = "^0.45.0"
 
 [tool.poetry.group.scanners]
 optional = true

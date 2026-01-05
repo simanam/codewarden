@@ -7,10 +7,14 @@ Example:
     >>> import codewarden
     >>> codewarden.init("https://key@ingest.codewarden.io/123")
     >>> codewarden.capture_message("Hello from CodeWarden!")
+    >>>
+    >>> # Add breadcrumbs for context
+    >>> codewarden.add_breadcrumb("ui", "User clicked submit")
 """
 
 from codewarden.client import CodeWardenClient
 from codewarden.exceptions import CodeWardenError, ConfigurationError
+from codewarden.watchdog import add_breadcrumb, get_watchdog
 
 __version__ = "0.1.0"
 __all__ = [
@@ -18,6 +22,8 @@ __all__ = [
     "get_client",
     "capture_exception",
     "capture_message",
+    "add_breadcrumb",
+    "get_watchdog",
     "CodeWardenClient",
     "CodeWardenError",
     "ConfigurationError",

@@ -3,8 +3,8 @@
 ## Overview
 This document tracks all errors encountered during development, their root causes, and solutions applied.
 
-**Last Updated:** 2026-01-04
-**Total Errors Resolved:** 1
+**Last Updated:** 2026-01-05
+**Total Errors Resolved:** 5
 **Active Errors:** 0
 
 ---
@@ -103,7 +103,90 @@ The system Python 3.9 that comes with macOS Command Line Tools has a limitation 
 ### Build Errors (BUILD)
 Errors during compilation, bundling, or build processes.
 
-*No errors logged yet.*
+### ERR-002: Docker Compose Version Attribute Obsolete
+
+**Date:** 2026-01-04
+**Status:** Resolved
+**Severity:** Low
+**Phase:** Phase 1.3 - Docker Development Environment
+
+#### Error Message
+```
+WARN[0000] /Users/.../codewarden/docker-compose.yml: the attribute `version` is obsolete
+```
+
+#### Context
+- **File(s) Affected:** docker-compose.yml
+- **Command/Action:** docker compose up
+- **Environment:** Local
+
+#### Root Cause Analysis
+Docker Compose V2 no longer requires the `version` attribute at the top of compose files. It's now considered obsolete.
+
+#### Solution Applied
+Removed the `version: '3.8'` line from docker-compose.yml.
+
+#### Prevention
+Use modern Docker Compose syntax without version specification.
+
+---
+
+### ERR-003: Poetry README.md Not Found
+
+**Date:** 2026-01-04
+**Status:** Resolved
+**Severity:** Medium
+**Phase:** Phase 1.3 - Docker Development Environment
+
+#### Error Message
+```
+Readme path `/app/README.md` does not exist.
+```
+
+#### Context
+- **File(s) Affected:** packages/api/pyproject.toml
+- **Command/Action:** docker compose build api
+- **Environment:** Local Docker build
+
+#### Root Cause Analysis
+The API package's pyproject.toml referenced a README.md file that didn't exist, causing Poetry to fail during package installation in Docker.
+
+#### Solution Applied
+Created `/packages/api/README.md` with basic package documentation.
+
+#### Prevention
+Always create README.md when initializing Python packages that reference it in pyproject.toml.
+
+---
+
+### ERR-004: Port 3000 Already in Use
+
+**Date:** 2026-01-04
+**Status:** Resolved
+**Severity:** Low
+**Phase:** Phase 1.3 - Docker Development Environment
+
+#### Error Message
+```
+Error response from daemon: Ports are not available: exposing port TCP 0.0.0.0:3000 -> 0.0.0.0:0: listen tcp 0.0.0.0:3000: bind: address already in use
+```
+
+#### Context
+- **File(s) Affected:** docker-compose.yml (dashboard service)
+- **Command/Action:** docker compose up
+- **Environment:** Local
+
+#### Root Cause Analysis
+Another process was already using port 3000 on the host machine.
+
+#### Solution Applied
+Killed the process using port 3000:
+```bash
+lsof -ti:3000 | xargs kill -9
+```
+
+#### Prevention
+Check for port conflicts before starting Docker services or use dynamic port allocation.
 
 ---
 
@@ -124,7 +207,35 @@ Errors related to Supabase, migrations, or data operations.
 ### API Errors (API)
 Errors in the FastAPI backend or endpoint handling.
 
-*No errors logged yet.*
+### ERR-005: FastAPI 204 Status With Response Body
+
+**Date:** 2026-01-05
+**Status:** Resolved
+**Severity:** Medium
+**Phase:** Phase 2.6 - API Server Core Endpoints
+
+#### Error Message
+```
+AssertionError: Status code 204 must not have a response body
+```
+
+#### Context
+- **File(s) Affected:** packages/api/src/api/routers/projects.py
+- **Command/Action:** Starting API server
+- **Environment:** Local Docker
+
+#### Root Cause Analysis
+The delete_project endpoint was defined with `status_code=status.HTTP_204_NO_CONTENT` but the function had a return type annotation that FastAPI interpreted as expecting a response body. HTTP 204 responses must not have a body.
+
+#### Solution Applied
+Changed the return type annotation from `-> None` to `-> Response`:
+```python
+async def delete_project(...) -> Response:
+```
+
+#### Prevention
+- Always use `-> Response` return type for 204 endpoints
+- Alternatively, don't specify response_model for 204 endpoints
 
 ---
 
@@ -205,14 +316,14 @@ curl -X POST "$UPSTASH_REDIS_REST_URL" \
 | Category | Total | Resolved | Active |
 |----------|-------|----------|--------|
 | ENV | 1 | 1 | 0 |
-| BUILD | 0 | 0 | 0 |
+| BUILD | 3 | 3 | 0 |
 | RUNTIME | 0 | 0 | 0 |
 | DB | 0 | 0 | 0 |
-| API | 0 | 0 | 0 |
+| API | 1 | 1 | 0 |
 | SDK | 0 | 0 | 0 |
 | DEPLOY | 0 | 0 | 0 |
 | INT | 0 | 0 | 0 |
-| **Total** | **1** | **1** | **0** |
+| **Total** | **5** | **5** | **0** |
 
 ---
 

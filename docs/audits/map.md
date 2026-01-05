@@ -3,7 +3,7 @@
 ## Overview
 This document defines the relationships between files, modules, and how code dependencies flow through the CodeWarden platform.
 
-**Last Updated:** 2026-01-04
+**Last Updated:** 2026-01-05
 **Architecture:** 4-Layer Hub & Spoke
 
 ---
@@ -61,29 +61,30 @@ This document defines the relationships between files, modules, and how code dep
 
 ---
 
-## Directory Structure (Planned)
+## Directory Structure (Current)
 
 ```
 codewarden/
 ├── packages/
 │   ├── api/                    # FastAPI Backend
-│   │   ├── src/
-│   │   │   ├── main.py         # Application entry point
-│   │   │   ├── config.py       # Configuration management
+│   │   ├── src/api/
+│   │   │   ├── __init__.py     # Package init
+│   │   │   ├── main.py         # Application entry point ✅
+│   │   │   ├── config.py       # Configuration management ✅
 │   │   │   ├── routers/        # API route handlers
-│   │   │   │   ├── ingest.py   # Event ingestion endpoint
-│   │   │   │   ├── auth.py     # Authentication endpoints
-│   │   │   │   ├── projects.py # Project CRUD
-│   │   │   │   └── alerts.py   # Alert management
+│   │   │   │   ├── __init__.py # Router exports ✅
+│   │   │   │   ├── events.py   # Event ingestion endpoints ✅
+│   │   │   │   └── projects.py # Project CRUD ✅
 │   │   │   ├── services/       # Business logic
-│   │   │   │   ├── event_processor.py
-│   │   │   │   ├── ai_analyzer.py
-│   │   │   │   └── alert_service.py
-│   │   │   ├── workers/        # ARQ background workers
-│   │   │   │   ├── tasks.py
-│   │   │   │   └── scheduler.py
+│   │   │   │   ├── __init__.py # Service exports ✅
+│   │   │   │   └── event_processor.py ✅
 │   │   │   ├── models/         # Pydantic models
-│   │   │   └── db/             # Database operations
+│   │   │   │   ├── __init__.py # Model exports ✅
+│   │   │   │   └── events.py   # Event models ✅
+│   │   │   ├── workers/        # ARQ background workers (pending)
+│   │   │   └── db/             # Database operations (pending)
+│   │   ├── Dockerfile          # Production image ✅
+│   │   ├── README.md           # Package docs ✅
 │   │   └── tests/
 │   │
 │   ├── dashboard/              # Next.js Frontend
@@ -105,18 +106,24 @@ codewarden/
 │   │
 │   ├── sdk-python/             # Python SDK
 │   │   ├── src/codewarden/
-│   │   │   ├── __init__.py     # SDK initialization
-│   │   │   ├── client.py       # Main client class
-│   │   │   ├── airlock.py      # PII scrubbing
-│   │   │   ├── transport.py    # HTTP transport
+│   │   │   ├── __init__.py     # SDK initialization ✅
+│   │   │   ├── client.py       # Main client class ✅
+│   │   │   ├── types.py        # Type definitions ✅
+│   │   │   ├── exceptions.py   # Custom exceptions ✅
+│   │   │   ├── airlock.py      # PII scrubbing ✅
+│   │   │   ├── transport.py    # HTTP transport ✅
+│   │   │   ├── watchdog.py     # Error capture & context ✅
 │   │   │   ├── middleware/     # Framework integrations
-│   │   │   │   ├── flask.py
-│   │   │   │   ├── django.py
-│   │   │   │   └── fastapi.py
-│   │   │   └── scanners/       # Security scanners
+│   │   │   │   ├── __init__.py # Middleware exports ✅
+│   │   │   │   ├── base.py     # Base middleware class ✅
+│   │   │   │   ├── fastapi.py  # FastAPI integration ✅
+│   │   │   │   ├── flask.py    # (pending)
+│   │   │   │   └── django.py   # (pending)
+│   │   │   └── scanners/       # Security scanners (pending)
 │   │   │       ├── dependencies.py
 │   │   │       ├── secrets.py
 │   │   │       └── static.py
+│   │   ├── pyproject.toml      # Package config ✅
 │   │   └── tests/
 │   │
 │   └── sdk-js/                 # JavaScript/TypeScript SDK
@@ -156,35 +163,50 @@ codewarden/
 ```
 codewarden/
 ├── __init__.py
-│   └── imports: client.py, airlock.py
+│   ├── imports: client.py, exceptions.py, watchdog.py
+│   └── exports: init(), get_client(), capture_exception(), add_breadcrumb()
 │
-├── client.py (CodeWardenClient)
+├── client.py (CodeWardenClient) ✅
 │   ├── depends on: transport.py
 │   ├── depends on: airlock.py
+│   ├── depends on: types.py
 │   └── configures: middleware/*
 │
-├── airlock.py (Airlock)
-│   ├── standalone module
+├── types.py ✅
+│   └── defines: Event, EventContext, ExceptionInfo, StackFrame
+│
+├── exceptions.py ✅
+│   └── defines: CodeWardenError, ConfigurationError, TransportError
+│
+├── airlock.py (Airlock) ✅
+│   ├── depends on: types.py
 │   └── used by: client.py, middleware/*
 │
-├── transport.py (AsyncTransport)
+├── transport.py (Transport) ✅
 │   ├── depends on: httpx (external)
+│   ├── depends on: types.py, exceptions.py
 │   └── used by: client.py
 │
-├── middleware/
-│   ├── flask.py (CodeWardenFlask)
-│   │   ├── depends on: client.py
-│   │   └── depends on: airlock.py
-│   │
-│   ├── django.py (CodeWardenDjango)
-│   │   ├── depends on: client.py
-│   │   └── depends on: airlock.py
-│   │
-│   └── fastapi.py (CodeWardenFastAPI)
-│       ├── depends on: client.py
-│       └── depends on: airlock.py
+├── watchdog.py (WatchDog) ✅
+│   ├── depends on: types.py
+│   ├── provides: breadcrumb tracking
+│   ├── provides: system info capture
+│   └── provides: exception handler hooks
 │
-└── scanners/
+├── middleware/
+│   ├── __init__.py ✅
+│   │   └── exports: BaseMiddleware, FastAPIMiddleware
+│   │
+│   ├── base.py (BaseMiddleware) ✅
+│   │   ├── depends on: codewarden (main module)
+│   │   └── provides: request tracking, exception capture
+│   │
+│   └── fastapi.py (CodeWardenMiddleware) ✅
+│       ├── depends on: starlette (external)
+│       ├── depends on: base.py
+│       └── provides: FastAPI/Starlette integration
+│
+└── scanners/ (pending)
     ├── dependencies.py (DependencyScanner)
     │   └── depends on: pip-audit (external)
     │
@@ -233,46 +255,54 @@ src/
 ### API Server
 
 ```
-src/
-├── main.py
-│   ├── imports: routers/*
-│   ├── imports: config.py
-│   └── starts: workers/tasks.py
+src/api/
+├── __init__.py ✅
+│   └── exports: __version__
 │
-├── config.py
-│   └── used by: all modules
+├── main.py ✅
+│   ├── imports: routers/events, routers/projects
+│   ├── imports: config.py
+│   ├── configures: CORS, logging
+│   └── provides: /health, / endpoints
+│
+├── config.py ✅
+│   ├── depends on: pydantic-settings
+│   └── provides: Settings (env vars, API keys, database URLs)
 │
 ├── routers/
-│   ├── ingest.py
-│   │   └── calls: services/event_processor.py
+│   ├── __init__.py ✅
+│   │   └── exports: events_router, projects_router
 │   │
-│   ├── auth.py
-│   │   └── calls: db/users.py
+│   ├── events.py ✅
+│   │   ├── depends on: models/events.py
+│   │   ├── depends on: services/event_processor.py
+│   │   └── provides: /api/v1/events/ingest, /single, /{id}
 │   │
-│   ├── projects.py
-│   │   └── calls: db/projects.py
+│   └── projects.py ✅
+│       ├── depends on: models (inline Pydantic models)
+│       └── provides: CRUD + rotate-key endpoints
+│
+├── models/
+│   ├── __init__.py ✅
+│   │   └── exports: Event, EventBatch, EventContext, etc.
 │   │
-│   └── alerts.py
-│       └── calls: services/alert_service.py
+│   └── events.py ✅
+│       └── defines: Event, EventBatch, EventResponse, Breadcrumb
 │
 ├── services/
-│   ├── event_processor.py
-│   │   ├── depends on: db/events.py
-│   │   └── queues to: workers/tasks.py
+│   ├── __init__.py ✅
+│   │   └── exports: EventProcessor
 │   │
-│   ├── ai_analyzer.py
-│   │   ├── depends on: LiteLLM (external)
-│   │   └── depends on: db/events.py
-│   │
-│   └── alert_service.py
-│       └── depends on: db/alerts.py
+│   └── event_processor.py ✅
+│       ├── depends on: models/events.py
+│       └── provides: process_batch(), enrich_event()
 │
-├── workers/
+├── workers/ (pending)
 │   └── tasks.py
 │       ├── depends on: services/*
 │       └── depends on: Redis/ARQ (external)
 │
-└── db/
+└── db/ (pending)
     ├── connection.py
     │   └── depends on: Supabase (external)
     │

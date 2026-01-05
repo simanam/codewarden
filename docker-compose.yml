@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # ═══════════════════════════════════════════════════════════════
   # DATABASE LAYER
@@ -78,9 +76,13 @@ services:
       - "8000:8000"
     environment:
       - ENVIRONMENT=development
+      - DEBUG=true
       - DATABASE_URL=postgresql://postgres:postgres@supabase-db:5432/postgres
       - REDIS_URL=redis://redis:6379
       - OPENOBSERVE_URL=http://openobserve:5080
+      - SUPABASE_URL=${SUPABASE_URL:-https://wfcwlcahdlonyqhkqwdq.supabase.co}
+      - SUPABASE_SECRET_KEY=${SUPABASE_SECRET_KEY}
+      - SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -105,7 +107,8 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
-      - NEXT_PUBLIC_SUPABASE_URL=http://localhost:8000
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL:-https://wfcwlcahdlonyqhkqwdq.supabase.co}
+      - NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}
     volumes:
       - ./packages/dashboard:/app
       - /app/node_modules
