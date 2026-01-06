@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Header, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Header, Response, status
 from pydantic import BaseModel, Field
 
 from api.auth import generate_api_key, hash_api_key
@@ -398,6 +398,49 @@ async def get_app(
     except Exception as e:
         logger.exception(f"Failed to get app: {e}")
         raise HTTPException(status_code=404, detail="App not found")
+
+
+@router.delete("/apps/{app_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+async def delete_app(
+    app_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Delete (archive) an app.
+
+    This soft-deletes the app by setting its status to 'archived'.
+    All associated data is retained but the app won't appear in listings.
+    """
+    try:
+        from api.db import supabase
+
+        if not supabase or not user.get("org_id"):
+            raise HTTPException(status_code=404, detail="App not found")
+
+        # Verify app ownership
+        result = (
+            supabase.table("apps")
+            .select("id")
+            .eq("id", app_id)
+            .eq("org_id", user["org_id"])
+            .single()
+            .execute()
+        )
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="App not found")
+
+        # Soft delete by setting status to archived
+        supabase.table("apps").update(
+            {"status": "archived", "updated_at": datetime.utcnow().isoformat()}
+        ).eq("id", app_id).execute()
+
+        logger.info(f"App {app_id} archived by user {user.get('id')}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to delete app: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete app")
 
 
 # ============================================

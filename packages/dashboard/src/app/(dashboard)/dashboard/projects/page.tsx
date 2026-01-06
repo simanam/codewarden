@@ -14,9 +14,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Copy, Check, MoreVertical, Key, Loader2, AlertCircle, Network } from 'lucide-react';
+import { Plus, Copy, Check, MoreVertical, Key, Loader2, AlertCircle, Network, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-import { getApps, createApp, getApiKeys, createApiKey, type App, type ApiKey } from '@/lib/api/client';
+import { getApps, createApp, getApiKeys, createApiKey, deleteApp, type App, type ApiKey } from '@/lib/api/client';
 
 export default function ProjectsPage() {
   const [apps, setApps] = useState<App[]>([]);
@@ -39,6 +39,11 @@ export default function ProjectsPage() {
   const [creatingKey, setCreatingKey] = useState(false);
 
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Delete confirmation state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [appToDelete, setAppToDelete] = useState<App | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadApps();
@@ -124,6 +129,28 @@ export default function ProjectsPage() {
     setShowKeyModal(true);
     setNewKey(null);
     loadApiKeys(app.id);
+  }
+
+  function confirmDelete(app: App) {
+    setAppToDelete(app);
+    setShowDeleteModal(true);
+  }
+
+  async function handleDeleteApp() {
+    if (!appToDelete) return;
+
+    try {
+      setDeleting(true);
+      await deleteApp(appToDelete.id);
+      setApps((prev) => prev.filter((a) => a.id !== appToDelete.id));
+      setShowDeleteModal(false);
+      setAppToDelete(null);
+    } catch (err) {
+      console.error('Failed to delete app:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete project');
+    } finally {
+      setDeleting(false);
+    }
   }
 
   if (loading) {
@@ -214,6 +241,15 @@ export default function ProjectsPage() {
                         title="API Keys"
                       >
                         <Key className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-secondary-400 hover:text-red-400"
+                        onClick={() => confirmDelete(app)}
+                        title="Delete Project"
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
@@ -403,6 +439,47 @@ export default function ProjectsPage() {
                     }}
                   >
                     Close
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteModal && appToDelete && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-md mx-4">
+              <CardHeader>
+                <CardTitle className="text-red-400">Delete Project</CardTitle>
+                <CardDescription>
+                  Are you sure you want to delete &quot;{appToDelete.name}&quot;?
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                  <p className="font-medium mb-1">This action cannot be undone.</p>
+                  <p>All events, API keys, and data associated with this project will be permanently deleted.</p>
+                </div>
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowDeleteModal(false);
+                      setAppToDelete(null);
+                    }}
+                    disabled={deleting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={handleDeleteApp}
+                    disabled={deleting}
+                    className="bg-red-600 hover:bg-red-700"
+                  >
+                    {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                    Delete Project
                   </Button>
                 </div>
               </CardContent>

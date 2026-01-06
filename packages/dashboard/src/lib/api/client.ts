@@ -128,6 +128,12 @@ export async function createApp(data: {
   });
 }
 
+export async function deleteApp(appId: string): Promise<void> {
+  await apiRequest<void>(`/api/dashboard/apps/${appId}`, {
+    method: 'DELETE',
+  });
+}
+
 // API Keys
 export async function getApiKeys(appId: string): Promise<ApiKey[]> {
   return apiRequest<ApiKey[]>(`/api/dashboard/apps/${appId}/keys`);
