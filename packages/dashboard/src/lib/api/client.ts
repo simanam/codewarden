@@ -194,8 +194,35 @@ export async function getAppEvents(
 }
 
 // Settings
+export interface PlanLimits {
+  events_per_month: number;
+  apps_limit: number;
+  retention_days: number;
+  ai_analysis: boolean;
+  security_scans: boolean | string;
+  evidence_locker: boolean;
+  team_members: number;
+  sso?: boolean;
+  dedicated_support?: boolean;
+  priority_support?: boolean;
+  partner_badge?: boolean;
+  admin_access?: boolean;
+  bypass_rate_limits?: boolean;
+  system_admin?: boolean;
+  is_paid: boolean;
+}
+
+export interface PlanInfo {
+  plan: 'hobbyist' | 'builder' | 'pro' | 'team' | 'enterprise' | 'partner' | 'admin';
+  plan_limits: PlanLimits;
+  is_paid: boolean;
+  is_partner: boolean;
+  is_admin: boolean;
+}
+
 export interface OrganizationSettings {
   name: string;
+  plan_info?: PlanInfo;
   notification_email?: string;
   telegram_chat_id?: string;
   slack_webhook?: string;

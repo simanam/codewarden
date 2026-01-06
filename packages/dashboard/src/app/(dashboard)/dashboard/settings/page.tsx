@@ -24,6 +24,14 @@ import {
   Loader2,
   Save,
   Sparkles,
+  Crown,
+  Shield,
+  Zap,
+  Users,
+  Database,
+  Clock,
+  Star,
+  Infinity,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -181,17 +189,17 @@ export default function SettingsPage() {
       <div className="flex-1 p-6 space-y-6 max-w-2xl">
         {/* Email Missing Banner */}
         {!hasEmail && (
-          <Card className="border-yellow-500/30 bg-yellow-500/5">
+          <Card className="border-warning/30 bg-warning/5">
             <CardContent className="pt-6">
               <div className="flex items-start gap-4">
-                <div className="p-2 rounded-full bg-yellow-500/10">
-                  <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                <div className="p-2 rounded-full bg-warning/10">
+                  <AlertTriangle className="h-5 w-5 text-warning" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-medium text-yellow-400">
+                  <h3 className="font-medium text-warning">
                     Add your email address
                   </h3>
-                  <p className="text-sm text-secondary-400 mt-1">
+                  <p className="text-sm text-muted-foreground mt-1">
                     You signed in without an email address. Add one to receive
                     important notifications about errors and security alerts.
                   </p>
@@ -216,10 +224,10 @@ export default function SettingsPage() {
                     </Button>
                   </div>
                   {emailError && (
-                    <p className="text-sm text-red-400 mt-2">{emailError}</p>
+                    <p className="text-sm text-danger mt-2">{emailError}</p>
                   )}
                   {emailSuccess && (
-                    <div className="flex items-center gap-2 mt-2 text-green-400">
+                    <div className="flex items-center gap-2 mt-2 text-success">
                       <CheckCircle className="h-4 w-4" />
                       <p className="text-sm">
                         Verification email sent! Check your inbox.
@@ -227,6 +235,173 @@ export default function SettingsPage() {
                     </div>
                   )}
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Plan Card */}
+        {settings?.plan_info && (
+          <Card className={`${
+            settings.plan_info.is_admin
+              ? 'border-danger/30 bg-gradient-to-br from-danger/5 to-transparent'
+              : settings.plan_info.is_partner
+              ? 'border-accent/30 bg-gradient-to-br from-accent/5 to-transparent'
+              : settings.plan_info.plan === 'enterprise'
+              ? 'border-primary/30 bg-gradient-to-br from-primary/5 to-transparent'
+              : ''
+          }`}>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2.5 rounded-lg ${
+                    settings.plan_info.is_admin
+                      ? 'bg-danger/10'
+                      : settings.plan_info.is_partner
+                      ? 'bg-accent/10'
+                      : 'bg-primary/10'
+                  }`}>
+                    {settings.plan_info.is_admin ? (
+                      <Shield className="h-5 w-5 text-danger" />
+                    ) : settings.plan_info.is_partner ? (
+                      <Star className="h-5 w-5 text-accent" />
+                    ) : (
+                      <Crown className="h-5 w-5 text-primary" />
+                    )}
+                  </div>
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      {settings.plan_info.plan.charAt(0).toUpperCase() + settings.plan_info.plan.slice(1)} Plan
+                      {settings.plan_info.is_admin && (
+                        <span className="badge badge-danger">Admin</span>
+                      )}
+                      {settings.plan_info.is_partner && (
+                        <span className="badge badge-warning">Partner</span>
+                      )}
+                    </CardTitle>
+                    <CardDescription>
+                      {settings.plan_info.is_admin
+                        ? 'Full system access with no restrictions'
+                        : settings.plan_info.is_partner
+                        ? 'Enterprise features - free for partners'
+                        : settings.plan_info.is_paid
+                        ? 'Paid subscription active'
+                        : 'Free tier'}
+                    </CardDescription>
+                  </div>
+                </div>
+                {!settings.plan_info.is_admin && !settings.plan_info.is_partner && settings.plan_info.plan !== 'enterprise' && (
+                  <Button variant="outline" size="sm">
+                    <Zap className="h-4 w-4 mr-2" />
+                    Upgrade
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* Events */}
+                <div className="p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                    <Database className="h-4 w-4" />
+                    <span className="text-xs font-medium">Events/Month</span>
+                  </div>
+                  <p className="font-semibold">
+                    {settings.plan_info.plan_limits.events_per_month === -1 ? (
+                      <span className="flex items-center gap-1">
+                        <Infinity className="h-4 w-4" /> Unlimited
+                      </span>
+                    ) : (
+                      settings.plan_info.plan_limits.events_per_month.toLocaleString()
+                    )}
+                  </p>
+                </div>
+
+                {/* Apps */}
+                <div className="p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                    <Zap className="h-4 w-4" />
+                    <span className="text-xs font-medium">Projects</span>
+                  </div>
+                  <p className="font-semibold">
+                    {settings.plan_info.plan_limits.apps_limit === -1 ? (
+                      <span className="flex items-center gap-1">
+                        <Infinity className="h-4 w-4" /> Unlimited
+                      </span>
+                    ) : (
+                      settings.plan_info.plan_limits.apps_limit
+                    )}
+                  </p>
+                </div>
+
+                {/* Retention */}
+                <div className="p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                    <Clock className="h-4 w-4" />
+                    <span className="text-xs font-medium">Retention</span>
+                  </div>
+                  <p className="font-semibold">
+                    {settings.plan_info.plan_limits.retention_days === -1 ? (
+                      <span className="flex items-center gap-1">
+                        <Infinity className="h-4 w-4" /> Forever
+                      </span>
+                    ) : (
+                      `${settings.plan_info.plan_limits.retention_days} days`
+                    )}
+                  </p>
+                </div>
+
+                {/* Team */}
+                <div className="p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                    <Users className="h-4 w-4" />
+                    <span className="text-xs font-medium">Team Members</span>
+                  </div>
+                  <p className="font-semibold">
+                    {settings.plan_info.plan_limits.team_members === -1 ? (
+                      <span className="flex items-center gap-1">
+                        <Infinity className="h-4 w-4" /> Unlimited
+                      </span>
+                    ) : (
+                      settings.plan_info.plan_limits.team_members
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {/* Feature Badges */}
+              <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-border">
+                {settings.plan_info.plan_limits.ai_analysis && (
+                  <span className="badge badge-info">
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    AI Analysis
+                  </span>
+                )}
+                {settings.plan_info.plan_limits.security_scans && (
+                  <span className="badge badge-info">
+                    <Shield className="h-3 w-3 mr-1" />
+                    Security Scans
+                    {settings.plan_info.plan_limits.security_scans === 'full' && ' (Full)'}
+                  </span>
+                )}
+                {settings.plan_info.plan_limits.evidence_locker && (
+                  <span className="badge badge-info">
+                    <Database className="h-3 w-3 mr-1" />
+                    Evidence Locker
+                  </span>
+                )}
+                {settings.plan_info.plan_limits.sso && (
+                  <span className="badge badge-success">SSO</span>
+                )}
+                {settings.plan_info.plan_limits.dedicated_support && (
+                  <span className="badge badge-success">Dedicated Support</span>
+                )}
+                {settings.plan_info.plan_limits.priority_support && (
+                  <span className="badge badge-warning">Priority Support</span>
+                )}
+                {settings.plan_info.plan_limits.admin_access && (
+                  <span className="badge badge-danger">System Admin</span>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -241,21 +416,21 @@ export default function SettingsPage() {
                 <div
                   className={`p-2 rounded-full ${
                     aiStatus?.available
-                      ? 'bg-green-500/10'
-                      : 'bg-secondary-700'
+                      ? 'bg-success/10'
+                      : 'bg-muted'
                   }`}
                 >
                   <Sparkles
                     className={`h-5 w-5 ${
                       aiStatus?.available
-                        ? 'text-green-400'
-                        : 'text-secondary-400'
+                        ? 'text-success'
+                        : 'text-muted-foreground'
                     }`}
                   />
                 </div>
                 <div>
                   <h3 className="font-medium">AI Analysis</h3>
-                  <p className="text-sm text-secondary-400">
+                  <p className="text-sm text-muted-foreground">
                     {aiStatus?.available
                       ? `Using ${aiStatus.models[0]}`
                       : 'Not configured'}
@@ -264,8 +439,8 @@ export default function SettingsPage() {
                 <div
                   className={`ml-auto px-2 py-1 rounded text-xs ${
                     aiStatus?.available
-                      ? 'bg-green-500/20 text-green-400'
-                      : 'bg-secondary-700 text-secondary-400'
+                      ? 'bg-success/20 text-success'
+                      : 'bg-muted text-muted-foreground'
                   }`}
                 >
                   {aiStatus?.available ? 'Active' : 'Inactive'}
@@ -281,21 +456,21 @@ export default function SettingsPage() {
                 <div
                   className={`p-2 rounded-full ${
                     notificationStatus?.available
-                      ? 'bg-green-500/10'
-                      : 'bg-secondary-700'
+                      ? 'bg-success/10'
+                      : 'bg-muted'
                   }`}
                 >
                   <Bell
                     className={`h-5 w-5 ${
                       notificationStatus?.available
-                        ? 'text-green-400'
-                        : 'text-secondary-400'
+                        ? 'text-success'
+                        : 'text-muted-foreground'
                     }`}
                   />
                 </div>
                 <div>
                   <h3 className="font-medium">Notifications</h3>
-                  <p className="text-sm text-secondary-400">
+                  <p className="text-sm text-muted-foreground">
                     {notificationStatus?.available
                       ? `Via ${notificationStatus.channels.join(', ')}`
                       : 'Not configured'}
@@ -304,8 +479,8 @@ export default function SettingsPage() {
                 <div
                   className={`ml-auto px-2 py-1 rounded text-xs ${
                     notificationStatus?.available
-                      ? 'bg-green-500/20 text-green-400'
-                      : 'bg-secondary-700 text-secondary-400'
+                      ? 'bg-success/20 text-success'
+                      : 'bg-muted text-muted-foreground'
                   }`}
                 >
                   {notificationStatus?.available ? 'Active' : 'Inactive'}
@@ -332,14 +507,14 @@ export default function SettingsPage() {
                     value={user?.email || ''}
                     disabled
                   />
-                  <p className="text-xs text-secondary-500">
+                  <p className="text-xs text-muted-foreground">
                     Your email cannot be changed
                   </p>
                 </>
               ) : (
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-secondary-800/50 border border-secondary-700">
-                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                  <span className="text-sm text-secondary-400">
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-border">
+                  <AlertTriangle className="h-4 w-4 text-warning" />
+                  <span className="text-sm text-muted-foreground">
                     No email address - add one above to receive notifications
                   </span>
                 </div>
@@ -376,7 +551,7 @@ export default function SettingsPage() {
           <CardContent className="space-y-6">
             {settingsLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
               </div>
             ) : (
               <>
@@ -395,7 +570,7 @@ export default function SettingsPage() {
                     value={notificationEmail}
                     onChange={(e) => setNotificationEmail(e.target.value)}
                   />
-                  <p className="text-xs text-secondary-500">
+                  <p className="text-xs text-muted-foreground">
                     Receive error alerts at this email (can be different from
                     your account email)
                   </p>
@@ -415,20 +590,20 @@ export default function SettingsPage() {
                     value={telegramChatId}
                     onChange={(e) => setTelegramChatId(e.target.value)}
                   />
-                  <p className="text-xs text-secondary-500">
+                  <p className="text-xs text-muted-foreground">
                     Get instant alerts via Telegram. Message @CodeWardenBot to
                     get your chat ID.
                   </p>
                 </div>
 
-                <hr className="border-secondary-700" />
+                <hr className="border-border" />
 
                 {/* Toggle Options */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium">Critical Error Alerts</p>
-                      <p className="text-sm text-secondary-400">
+                      <p className="text-sm text-muted-foreground">
                         Immediate notification for critical and high severity
                         errors
                       </p>
@@ -440,14 +615,14 @@ export default function SettingsPage() {
                         checked={settings?.notify_on_critical ?? true}
                         onChange={() => toggleSetting('notify_on_critical')}
                       />
-                      <div className="w-11 h-6 bg-secondary-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                      <div className="w-11 h-6 bg-muted peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-ring rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                     </label>
                   </div>
 
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium">Warning Alerts</p>
-                      <p className="text-sm text-secondary-400">
+                      <p className="text-sm text-muted-foreground">
                         Get notified about warnings and potential issues
                       </p>
                     </div>
@@ -458,14 +633,14 @@ export default function SettingsPage() {
                         checked={settings?.notify_on_warning ?? true}
                         onChange={() => toggleSetting('notify_on_warning')}
                       />
-                      <div className="w-11 h-6 bg-secondary-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                      <div className="w-11 h-6 bg-muted peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-ring rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                     </label>
                   </div>
 
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium">Weekly Digest</p>
-                      <p className="text-sm text-secondary-400">
+                      <p className="text-sm text-muted-foreground">
                         Receive a weekly summary of events and metrics
                       </p>
                     </div>
@@ -476,7 +651,7 @@ export default function SettingsPage() {
                         checked={settings?.weekly_digest ?? true}
                         onChange={() => toggleSetting('weekly_digest')}
                       />
-                      <div className="w-11 h-6 bg-secondary-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                      <div className="w-11 h-6 bg-muted peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-ring rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                     </label>
                   </div>
                 </div>
@@ -494,13 +669,13 @@ export default function SettingsPage() {
                     Save Notification Settings
                   </Button>
                   {settingsSuccess && (
-                    <div className="flex items-center gap-2 text-green-400">
+                    <div className="flex items-center gap-2 text-success">
                       <CheckCircle className="h-4 w-4" />
                       <span className="text-sm">Saved!</span>
                     </div>
                   )}
                   {settingsError && (
-                    <p className="text-sm text-red-400">{settingsError}</p>
+                    <p className="text-sm text-danger">{settingsError}</p>
                   )}
                 </div>
               </>
@@ -509,18 +684,18 @@ export default function SettingsPage() {
         </Card>
 
         {/* Danger Zone */}
-        <Card className="border-red-500/20">
+        <Card className="border-danger/20">
           <CardHeader>
-            <CardTitle className="text-red-400">Danger Zone</CardTitle>
+            <CardTitle className="text-danger">Danger Zone</CardTitle>
             <CardDescription>
               Irreversible actions for your account
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 rounded-lg bg-red-500/5 border border-red-500/20">
+            <div className="flex items-center justify-between p-4 rounded-lg bg-danger/5 border border-danger/20">
               <div>
                 <p className="font-medium">Delete Account</p>
-                <p className="text-sm text-secondary-400">
+                <p className="text-sm text-muted-foreground">
                   Permanently delete your account and all data
                 </p>
               </div>

@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Copy, Check, MoreVertical, Key, Loader2, AlertCircle, Network, Trash2 } from 'lucide-react';
+import { Plus, Copy, Check, Key, Loader2, AlertCircle, Network, Trash2, FolderKanban } from 'lucide-react';
 import Link from 'next/link';
 import { getApps, createApp, getApiKeys, createApiKey, deleteApp, type App, type ApiKey } from '@/lib/api/client';
 
@@ -158,7 +158,7 @@ export default function ProjectsPage() {
       <div className="flex flex-col h-full">
         <Header title="Projects" description="Manage your projects and SDK configurations" />
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       </div>
     );
@@ -168,12 +168,12 @@ export default function ProjectsPage() {
     <div className="flex flex-col h-full">
       <Header title="Projects" description="Manage your projects and SDK configurations" />
 
-      <div className="flex-1 p-6 space-y-6">
+      <div className="flex-1 p-4 md:p-6 space-y-6 overflow-auto">
         {error && (
-          <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" />
-            {error}
-            <button onClick={() => setError(null)} className="ml-auto text-xs underline">
+          <div className="p-4 rounded-lg bg-danger/10 border border-danger/20 text-danger flex items-center gap-2 text-sm">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span className="flex-1">{error}</span>
+            <button onClick={() => setError(null)} className="text-xs font-medium hover:underline">
               Dismiss
             </button>
           </div>
@@ -181,11 +181,9 @@ export default function ProjectsPage() {
 
         {/* Header Actions */}
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-secondary-400">
-              {apps.length} project{apps.length !== 1 && 's'}
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            {apps.length} project{apps.length !== 1 && 's'}
+          </p>
           <Button onClick={() => setShowCreateModal(true)}>
             <Plus className="h-4 w-4 mr-2" />
             New Project
@@ -194,14 +192,14 @@ export default function ProjectsPage() {
 
         {/* Projects Grid */}
         {apps.length === 0 ? (
-          <Card className="border-dashed">
+          <Card className="border-dashed border-2">
             <CardContent className="flex flex-col items-center justify-center py-12">
-              <div className="h-12 w-12 rounded-full bg-primary-500/10 flex items-center justify-center mb-4">
-                <Plus className="h-6 w-6 text-primary-500" />
+              <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center mb-4">
+                <FolderKanban className="h-7 w-7 text-muted-foreground" />
               </div>
-              <h3 className="font-medium mb-1">No projects yet</h3>
-              <p className="text-sm text-secondary-400 mb-4">
-                Create your first project to start monitoring
+              <h3 className="font-semibold mb-1">No projects yet</h3>
+              <p className="text-sm text-muted-foreground mb-4 text-center max-w-sm">
+                Create your first project to start monitoring your application
               </p>
               <Button onClick={() => setShowCreateModal(true)}>
                 <Plus className="h-4 w-4 mr-2" />
@@ -212,17 +210,17 @@ export default function ProjectsPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {apps.map((app) => (
-              <Card key={app.id} className="relative">
-                <CardHeader className="pb-2">
+              <Card key={app.id} className="card-interactive group">
+                <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-lg">{app.name}</CardTitle>
-                      <CardDescription>
-                        {app.environment}
-                        {app.framework && ` • ${app.framework}`}
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="text-base truncate">{app.name}</CardTitle>
+                      <CardDescription className="mt-0.5">
+                        <span className="badge badge-info mr-1.5">{app.environment}</span>
+                        {app.framework && <span className="text-muted-foreground">{app.framework}</span>}
                       </CardDescription>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Link href={`/dashboard/projects/${app.id}/architecture`}>
                         <Button
                           variant="ghost"
@@ -245,7 +243,7 @@ export default function ProjectsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-secondary-400 hover:text-red-400"
+                        className="h-8 w-8 text-muted-foreground hover:text-danger"
                         onClick={() => confirmDelete(app)}
                         title="Delete Project"
                       >
@@ -257,30 +255,30 @@ export default function ProjectsPage() {
                 <CardContent className="space-y-4">
                   {/* Stats */}
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-2xl font-bold">{app.event_count_24h}</p>
-                      <p className="text-xs text-secondary-500">Events (24h)</p>
+                    <div className="p-3 rounded-lg bg-muted/50">
+                      <p className="stat-value text-xl">{app.event_count_24h}</p>
+                      <p className="stat-label text-xs">Events (24h)</p>
                     </div>
-                    <div>
-                      <p className={`text-2xl font-bold ${app.error_count_24h > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                    <div className="p-3 rounded-lg bg-muted/50">
+                      <p className={`stat-value text-xl ${app.error_count_24h > 0 ? 'text-danger' : 'text-success'}`}>
                         {app.error_count_24h}
                       </p>
-                      <p className="text-xs text-secondary-500">Errors (24h)</p>
+                      <p className="stat-label text-xs">Errors (24h)</p>
                     </div>
                   </div>
 
                   {/* Status */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 pt-2 border-t border-border">
                     <span
                       className={`h-2 w-2 rounded-full ${
                         app.error_count_24h > 0
-                          ? 'bg-red-500'
+                          ? 'bg-danger'
                           : app.event_count_24h > 0
-                          ? 'bg-green-500'
-                          : 'bg-secondary-500'
+                          ? 'bg-success'
+                          : 'bg-muted-foreground'
                       }`}
                     />
-                    <span className="text-xs text-secondary-400">
+                    <span className="text-xs text-muted-foreground">
                       {app.last_event_at
                         ? `Last event: ${new Date(app.last_event_at).toLocaleString()}`
                         : 'No events yet'}
@@ -294,8 +292,8 @@ export default function ProjectsPage() {
 
         {/* Create Project Modal */}
         {showCreateModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <Card className="w-full max-w-md mx-4">
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <Card className="w-full max-w-md animate-scale-in">
               <CardHeader>
                 <CardTitle>Create New Project</CardTitle>
                 <CardDescription>Set up a new project to start tracking events</CardDescription>
@@ -316,7 +314,7 @@ export default function ProjectsPage() {
                     id="environment"
                     value={createEnv}
                     onChange={(e) => setCreateEnv(e.target.value)}
-                    className="w-full h-10 rounded-lg border border-secondary-700 bg-secondary-900 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   >
                     <option value="production">Production</option>
                     <option value="staging">Staging</option>
@@ -329,7 +327,7 @@ export default function ProjectsPage() {
                     id="framework"
                     value={createFramework}
                     onChange={(e) => setCreateFramework(e.target.value)}
-                    className="w-full h-10 rounded-lg border border-secondary-700 bg-secondary-900 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   >
                     <option value="">Select framework...</option>
                     <option value="fastapi">FastAPI (Python)</option>
@@ -356,8 +354,8 @@ export default function ProjectsPage() {
 
         {/* API Keys Modal */}
         {showKeyModal && selectedApp && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <Card className="w-full max-w-lg mx-4">
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <Card className="w-full max-w-lg animate-scale-in">
               <CardHeader>
                 <CardTitle>API Keys - {selectedApp.name}</CardTitle>
                 <CardDescription>Manage API keys for SDK authentication</CardDescription>
@@ -365,8 +363,8 @@ export default function ProjectsPage() {
               <CardContent className="space-y-4">
                 {/* New Key Alert */}
                 {newKey?.full_key && (
-                  <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
-                    <p className="text-sm font-medium text-green-400 mb-2">
+                  <div className="p-4 rounded-lg bg-success/10 border border-success/20">
+                    <p className="text-sm font-medium text-success mb-2">
                       New API key created! Copy it now - you won&apos;t see it again.
                     </p>
                     <div className="flex items-center gap-2">
@@ -381,7 +379,7 @@ export default function ProjectsPage() {
                         onClick={() => copyToClipboard(newKey.full_key!, 'new')}
                       >
                         {copiedKey === 'new' ? (
-                          <Check className="h-4 w-4 text-green-500" />
+                          <Check className="h-4 w-4 text-success" />
                         ) : (
                           <Copy className="h-4 w-4" />
                         )}
@@ -393,30 +391,33 @@ export default function ProjectsPage() {
                 {/* Existing Keys */}
                 {loadingKeys ? (
                   <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
                   </div>
                 ) : apiKeys.length === 0 ? (
-                  <div className="text-center py-8 text-secondary-500">
-                    <p>No API keys yet.</p>
-                    <p className="text-sm mt-1">Create one to start using the SDK.</p>
+                  <div className="text-center py-8">
+                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
+                      <Key className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <p className="font-medium text-sm">No API keys yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">Create one to start using the SDK.</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {apiKeys.map((key) => (
                       <div
                         key={key.id}
-                        className="flex items-center justify-between p-3 rounded-lg bg-secondary-800/50"
+                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
                       >
                         <div>
                           <p className="text-sm font-medium">{key.name}</p>
-                          <p className="text-xs text-secondary-500 font-mono">
+                          <p className="text-xs text-muted-foreground font-mono">
                             {key.key_prefix}...
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="text-xs text-secondary-400">{key.key_type}</p>
+                          <span className="badge badge-info text-xs">{key.key_type}</span>
                           {key.last_used_at && (
-                            <p className="text-xs text-secondary-500">
+                            <p className="text-xs text-muted-foreground mt-1">
                               Last used: {new Date(key.last_used_at).toLocaleDateString()}
                             </p>
                           )}
@@ -426,7 +427,7 @@ export default function ProjectsPage() {
                   </div>
                 )}
 
-                <div className="flex justify-between pt-4 border-t border-secondary-800">
+                <div className="flex justify-between pt-4 border-t border-border">
                   <Button variant="outline" onClick={handleCreateKey} disabled={creatingKey}>
                     {creatingKey ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
                     Generate New Key
@@ -448,18 +449,18 @@ export default function ProjectsPage() {
 
         {/* Delete Confirmation Modal */}
         {showDeleteModal && appToDelete && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <Card className="w-full max-w-md mx-4">
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <Card className="w-full max-w-md animate-scale-in">
               <CardHeader>
-                <CardTitle className="text-red-400">Delete Project</CardTitle>
+                <CardTitle className="text-danger">Delete Project</CardTitle>
                 <CardDescription>
                   Are you sure you want to delete &quot;{appToDelete.name}&quot;?
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                <div className="p-4 rounded-lg bg-danger/10 border border-danger/20 text-danger text-sm">
                   <p className="font-medium mb-1">This action cannot be undone.</p>
-                  <p>All events, API keys, and data associated with this project will be permanently deleted.</p>
+                  <p className="text-danger/80">All events, API keys, and data associated with this project will be permanently deleted.</p>
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
                   <Button
@@ -476,7 +477,6 @@ export default function ProjectsPage() {
                     variant="destructive"
                     onClick={handleDeleteApp}
                     disabled={deleting}
-                    className="bg-red-600 hover:bg-red-700"
                   >
                     {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
                     Delete Project

@@ -15,6 +15,140 @@ from api.config import settings
 api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
 
 
+# Plan tiers with their capabilities
+PLAN_TIERS = {
+    "hobbyist": {
+        "events_per_month": 1000,
+        "apps_limit": 1,
+        "retention_days": 7,
+        "ai_analysis": False,
+        "security_scans": False,
+        "evidence_locker": False,
+        "team_members": 1,
+        "is_paid": False,
+    },
+    "builder": {
+        "events_per_month": 10000,
+        "apps_limit": 3,
+        "retention_days": 30,
+        "ai_analysis": True,
+        "security_scans": "basic",
+        "evidence_locker": False,
+        "team_members": 1,
+        "is_paid": True,
+    },
+    "pro": {
+        "events_per_month": 50000,
+        "apps_limit": 10,
+        "retention_days": 90,
+        "ai_analysis": True,
+        "security_scans": "full",
+        "evidence_locker": True,
+        "team_members": 3,
+        "is_paid": True,
+    },
+    "team": {
+        "events_per_month": 200000,
+        "apps_limit": 25,
+        "retention_days": 180,
+        "ai_analysis": True,
+        "security_scans": "full",
+        "evidence_locker": True,
+        "team_members": 10,
+        "is_paid": True,
+    },
+    "enterprise": {
+        "events_per_month": -1,  # unlimited
+        "apps_limit": -1,
+        "retention_days": 365,
+        "ai_analysis": True,
+        "security_scans": "full",
+        "evidence_locker": True,
+        "team_members": -1,
+        "sso": True,
+        "dedicated_support": True,
+        "is_paid": True,
+    },
+    "partner": {
+        "events_per_month": -1,  # unlimited
+        "apps_limit": -1,
+        "retention_days": 365,
+        "ai_analysis": True,
+        "security_scans": "full",
+        "evidence_locker": True,
+        "team_members": -1,
+        "sso": True,
+        "dedicated_support": True,
+        "priority_support": True,
+        "partner_badge": True,
+        "is_paid": False,  # Free for partners
+    },
+    "admin": {
+        "events_per_month": -1,  # unlimited
+        "apps_limit": -1,
+        "retention_days": -1,  # forever
+        "ai_analysis": True,
+        "security_scans": "full",
+        "evidence_locker": True,
+        "team_members": -1,
+        "sso": True,
+        "dedicated_support": True,
+        "admin_access": True,
+        "bypass_rate_limits": True,
+        "system_admin": True,
+        "is_paid": False,
+    },
+}
+
+
+def get_plan_limits(plan: str) -> dict:
+    """Get the limits and features for a given plan."""
+    return PLAN_TIERS.get(plan, PLAN_TIERS["hobbyist"])
+
+
+def is_unlimited_plan(plan: str) -> bool:
+    """Check if a plan has unlimited access (admin or partner or enterprise)."""
+    return plan in ("admin", "partner", "enterprise")
+
+
+def is_admin_plan(plan: str) -> bool:
+    """Check if a plan has admin privileges."""
+    return plan == "admin"
+
+
+def plan_has_feature(plan: str, feature: str) -> bool:
+    """Check if a plan has a specific feature enabled."""
+    if plan == "admin":
+        return True  # Admin has all features
+
+    limits = get_plan_limits(plan)
+    value = limits.get(feature)
+
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value not in ("false", "")
+    if isinstance(value, int):
+        return value != 0
+    return True
+
+
+def check_plan_limit(plan: str, limit_name: str, current_value: int) -> bool:
+    """Check if the current value is within the plan's limit."""
+    if plan == "admin":
+        return True  # Admin bypasses all limits
+
+    limits = get_plan_limits(plan)
+    limit_value = limits.get(limit_name, 0)
+
+    if limit_value == -1:
+        return True  # Unlimited
+
+    return current_value < limit_value
+
+
 @dataclass
 class ApiKeyInfo:
     """Information about the authenticated API key."""
@@ -25,6 +159,34 @@ class ApiKeyInfo:
     org_plan: str
     permissions: list[str]
     key_type: str  # 'live' or 'test'
+
+    @property
+    def plan_limits(self) -> dict:
+        """Get the limits for this key's organization plan."""
+        return get_plan_limits(self.org_plan)
+
+    @property
+    def is_admin(self) -> bool:
+        """Check if this is an admin-tier organization."""
+        return self.org_plan == "admin"
+
+    @property
+    def is_partner(self) -> bool:
+        """Check if this is a partner-tier organization."""
+        return self.org_plan == "partner"
+
+    @property
+    def is_unlimited(self) -> bool:
+        """Check if this organization has unlimited access."""
+        return is_unlimited_plan(self.org_plan)
+
+    def has_feature(self, feature: str) -> bool:
+        """Check if this key's plan has a specific feature."""
+        return plan_has_feature(self.org_plan, feature)
+
+    def within_limit(self, limit_name: str, current_value: int) -> bool:
+        """Check if a value is within this plan's limits."""
+        return check_plan_limit(self.org_plan, limit_name, current_value)
 
 
 def hash_api_key(api_key: str) -> str:

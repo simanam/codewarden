@@ -1165,10 +1165,21 @@ async def send_event_notification(
 # ============================================
 
 
+class PlanInfo(BaseModel):
+    """Plan tier information."""
+
+    plan: str
+    plan_limits: dict
+    is_paid: bool = False
+    is_partner: bool = False
+    is_admin: bool = False
+
+
 class OrganizationSettings(BaseModel):
     """Organization settings model."""
 
     name: str
+    plan_info: Optional[PlanInfo] = None
     notification_email: Optional[str] = None
     telegram_chat_id: Optional[str] = None
     slack_webhook: Optional[str] = None
@@ -1194,6 +1205,7 @@ async def get_settings(
 ) -> OrganizationSettings:
     """Get organization settings."""
     try:
+        from api.auth.api_key import get_plan_limits
         from api.db import supabase
 
         if not supabase or not user.get("org_id"):
@@ -1211,9 +1223,20 @@ async def get_settings(
             raise HTTPException(status_code=404, detail="Organization not found")
 
         org = result.data
+        plan = org.get("plan", "hobbyist")
+        plan_limits = get_plan_limits(plan)
+
+        plan_info = PlanInfo(
+            plan=plan,
+            plan_limits=plan_limits,
+            is_paid=plan_limits.get("is_paid", False),
+            is_partner=plan == "partner",
+            is_admin=plan == "admin",
+        )
 
         return OrganizationSettings(
             name=org.get("name", "My Organization"),
+            plan_info=plan_info,
             notification_email=org.get("notification_email"),
             telegram_chat_id=org.get("telegram_chat_id"),
             slack_webhook=org.get("slack_webhook"),

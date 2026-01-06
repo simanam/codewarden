@@ -11,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { AlertTriangle, CheckCircle, Clock, TrendingUp, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Layers, TrendingUp, Loader2, ArrowRight, BookOpen, Bell, FolderPlus } from 'lucide-react';
 import { getDashboardStats, getEvents, type DashboardStats, type Event } from '@/lib/api/client';
 import Link from 'next/link';
 
@@ -59,26 +59,30 @@ export default function DashboardPage() {
     {
       title: 'Total Apps',
       value: stats?.total_apps ?? 0,
-      icon: TrendingUp,
-      color: 'text-blue-400',
+      icon: Layers,
+      color: 'text-primary',
+      bgColor: 'bg-primary/10',
     },
     {
       title: 'Events (24h)',
       value: stats?.total_events_24h ?? 0,
       icon: TrendingUp,
-      color: 'text-blue-400',
+      color: 'text-primary',
+      bgColor: 'bg-primary/10',
     },
     {
       title: 'Errors (24h)',
       value: stats?.total_errors_24h ?? 0,
       icon: AlertTriangle,
-      color: stats?.total_errors_24h ? 'text-red-400' : 'text-green-400',
+      color: stats?.total_errors_24h ? 'text-danger' : 'text-success',
+      bgColor: stats?.total_errors_24h ? 'bg-danger/10' : 'bg-success/10',
     },
     {
       title: 'Apps Healthy',
       value: stats?.apps_healthy ?? 0,
       icon: CheckCircle,
-      color: 'text-green-400',
+      color: 'text-success',
+      bgColor: 'bg-success/10',
     },
   ];
 
@@ -90,7 +94,7 @@ export default function DashboardPage() {
           description="Monitor your application health and security"
         />
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       </div>
     );
@@ -103,25 +107,29 @@ export default function DashboardPage() {
         description="Monitor your application health and security"
       />
 
-      <div className="flex-1 p-6 space-y-6">
+      <div className="flex-1 p-4 md:p-6 space-y-6 overflow-auto">
         {error && (
-          <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400">
+          <div className="p-4 rounded-lg bg-danger/10 border border-danger/20 text-danger text-sm">
             {error}
           </div>
         )}
 
         {/* Stats Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-4">
           {statCards.map((stat) => (
-            <Card key={stat.title}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-secondary-400">
-                  {stat.title}
-                </CardTitle>
-                <stat.icon className={`h-4 w-4 ${stat.color}`} />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
+            <Card key={stat.title} className="card-interactive">
+              <CardContent className="p-4 md:p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs md:text-sm font-medium text-muted-foreground">
+                      {stat.title}
+                    </p>
+                    <p className="stat-value mt-1">{stat.value}</p>
+                  </div>
+                  <div className={`p-2.5 rounded-lg ${stat.bgColor}`}>
+                    <stat.icon className={`h-5 w-5 ${stat.color}`} />
+                  </div>
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -129,66 +137,86 @@ export default function DashboardPage() {
 
         {/* Recent Events */}
         <Card>
-          <CardHeader>
-            <CardTitle>Recent Events</CardTitle>
-            <CardDescription>
-              Latest events from your connected projects
-            </CardDescription>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Recent Events</CardTitle>
+                <CardDescription className="mt-1">
+                  Latest events from your connected projects
+                </CardDescription>
+              </div>
+              {events.length > 0 && (
+                <Link
+                  href="/dashboard/events"
+                  className="text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
+                >
+                  View all
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {events.length === 0 ? (
-              <div className="text-center py-8 text-secondary-500">
-                <p>No events yet.</p>
-                <p className="text-sm mt-1">
+              <div className="text-center py-10">
+                <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="h-7 w-7 text-muted-foreground" />
+                </div>
+                <p className="font-medium">No events yet</p>
+                <p className="text-sm text-muted-foreground mt-1">
                   Events will appear here once your SDK starts sending data.
                 </p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-2">
                 {events.map((event) => (
                   <div
                     key={event.id}
-                    className="flex items-start gap-4 p-4 rounded-lg bg-secondary-800/50 hover:bg-secondary-800 transition-colors cursor-pointer"
+                    className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer group"
                   >
-                    <div
-                      className={`mt-0.5 h-2 w-2 rounded-full ${
-                        event.severity === 'critical' || event.severity === 'high'
-                          ? 'bg-red-500'
-                          : event.severity === 'medium'
-                          ? 'bg-yellow-500'
-                          : 'bg-blue-500'
-                      }`}
-                    />
+                    <div className={`mt-1 p-1.5 rounded-full shrink-0 ${
+                      event.severity === 'critical' || event.severity === 'high'
+                        ? 'bg-danger/10'
+                        : event.severity === 'medium'
+                        ? 'bg-warning/10'
+                        : 'bg-primary/10'
+                    }`}>
+                      <div
+                        className={`h-2 w-2 rounded-full ${
+                          event.severity === 'critical' || event.severity === 'high'
+                            ? 'bg-danger'
+                            : event.severity === 'medium'
+                            ? 'bg-warning'
+                            : 'bg-primary'
+                        }`}
+                      />
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
+                      <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">
                         {event.error_message || event.error_type || event.event_type}
                       </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${
-                          event.severity === 'critical' ? 'bg-red-500/20 text-red-400' :
-                          event.severity === 'high' ? 'bg-orange-500/20 text-orange-400' :
-                          event.severity === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                          'bg-blue-500/20 text-blue-400'
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5">
+                        <span className={`badge ${
+                          event.severity === 'critical' ? 'badge-danger' :
+                          event.severity === 'high' ? 'badge-danger' :
+                          event.severity === 'medium' ? 'badge-warning' :
+                          'badge-info'
                         }`}>
                           {event.severity}
                         </span>
                         {event.file_path && (
-                          <>
-                            <span className="text-xs text-secondary-600">•</span>
-                            <span className="text-xs text-secondary-500 truncate">
-                              {event.file_path}
-                              {event.line_number && `:${event.line_number}`}
-                            </span>
-                          </>
+                          <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                            {event.file_path}
+                            {event.line_number && `:${event.line_number}`}
+                          </span>
                         )}
-                        <span className="text-xs text-secondary-600">•</span>
-                        <span className="text-xs text-secondary-500">
+                        <span className="text-xs text-muted-foreground">
                           {formatTime(event.occurred_at)}
                         </span>
                       </div>
                       {event.analysis_summary && (
-                        <p className="text-xs text-secondary-400 mt-2">
-                          AI: {event.analysis_summary}
+                        <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
+                          <span className="font-medium text-primary">AI:</span> {event.analysis_summary}
                         </p>
                       )}
                     </div>
@@ -200,34 +228,55 @@ export default function DashboardPage() {
         </Card>
 
         {/* Quick Actions */}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-3">
           <Link href="/dashboard/projects">
-            <Card className="hover:border-primary-500/50 transition-colors cursor-pointer h-full">
-              <CardContent className="pt-6">
-                <h3 className="font-medium mb-1">Create New Project</h3>
-                <p className="text-sm text-secondary-400">
-                  Set up a new project and get your SDK key
-                </p>
+            <Card className="card-interactive h-full group">
+              <CardContent className="p-5">
+                <div className="flex items-start gap-4">
+                  <div className="p-2.5 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                    <FolderPlus className="h-5 w-5 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-medium group-hover:text-primary transition-colors">Create New Project</h3>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Set up a new project and get your SDK key
+                    </p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </Link>
           <a href="https://docs.codewarden.io" target="_blank" rel="noopener noreferrer">
-            <Card className="hover:border-primary-500/50 transition-colors cursor-pointer h-full">
-              <CardContent className="pt-6">
-                <h3 className="font-medium mb-1">View Documentation</h3>
-                <p className="text-sm text-secondary-400">
-                  Learn how to integrate CodeWarden
-                </p>
+            <Card className="card-interactive h-full group">
+              <CardContent className="p-5">
+                <div className="flex items-start gap-4">
+                  <div className="p-2.5 rounded-lg bg-accent/10 group-hover:bg-accent/20 transition-colors">
+                    <BookOpen className="h-5 w-5 text-accent" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-medium group-hover:text-accent transition-colors">View Documentation</h3>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Learn how to integrate CodeWarden
+                    </p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </a>
           <Link href="/dashboard/settings">
-            <Card className="hover:border-primary-500/50 transition-colors cursor-pointer h-full">
-              <CardContent className="pt-6">
-                <h3 className="font-medium mb-1">Configure Notifications</h3>
-                <p className="text-sm text-secondary-400">
-                  Set up alerts for your team
-                </p>
+            <Card className="card-interactive h-full group">
+              <CardContent className="p-5">
+                <div className="flex items-start gap-4">
+                  <div className="p-2.5 rounded-lg bg-success/10 group-hover:bg-success/20 transition-colors">
+                    <Bell className="h-5 w-5 text-success" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-medium group-hover:text-success transition-colors">Configure Notifications</h3>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Set up alerts for your team
+                    </p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </Link>
