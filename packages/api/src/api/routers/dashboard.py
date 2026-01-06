@@ -10,11 +10,13 @@ from datetime import datetime, timedelta
 from typing import Any, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Header, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Header, status
 from pydantic import BaseModel, Field
 
 from api.auth import generate_api_key, hash_api_key
 from api.config import settings
+from api.services.ai_analyzer import get_analyzer
+from api.services.notifications import get_notification_service
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +177,39 @@ class DashboardStats(BaseModel):
     apps_healthy: int
     apps_warning: int
     apps_critical: int
+
+
+class AIAnalysis(BaseModel):
+    """AI analysis result."""
+
+    summary: str
+    root_cause: str
+    suggested_fix: str
+    severity_assessment: str
+    related_issues: list[str]
+    code_suggestions: list[dict[str, str]]
+    confidence: float
+
+
+class EventDetail(BaseModel):
+    """Detailed event information including AI analysis."""
+
+    id: str
+    app_id: str
+    event_type: str
+    severity: str
+    error_type: Optional[str]
+    error_message: Optional[str]
+    file_path: Optional[str]
+    line_number: Optional[int]
+    stack_trace: Optional[str]
+    environment: Optional[str]
+    status: str
+    occurred_at: str
+    analysis_status: str
+    analysis: Optional[AIAnalysis]
+    model_used: Optional[str]
+    analyzed_at: Optional[str]
 
 
 # ============================================
@@ -780,3 +815,586 @@ async def get_dashboard_stats(
             apps_warning=0,
             apps_critical=0,
         )
+
+
+# ============================================
+# Event Detail & AI Analysis
+# ============================================
+
+
+@router.get("/events/{event_id}", response_model=EventDetail)
+async def get_event_detail(
+    event_id: str,
+    user: dict = Depends(get_current_user),
+) -> EventDetail:
+    """Get detailed event information including AI analysis."""
+    try:
+        from api.db import supabase
+
+        if not supabase or not user.get("org_id"):
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        # Get event
+        result = (
+            supabase.table("event_metadata")
+            .select("*, apps!inner(org_id)")
+            .eq("id", event_id)
+            .single()
+            .execute()
+        )
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        event = result.data
+
+        # Verify org ownership
+        if event.get("apps", {}).get("org_id") != user["org_id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        # Parse analysis if present
+        analysis = None
+        if event.get("analysis_result"):
+            analysis_data = event["analysis_result"]
+            if isinstance(analysis_data, dict):
+                analysis = AIAnalysis(
+                    summary=analysis_data.get("summary", ""),
+                    root_cause=analysis_data.get("root_cause", ""),
+                    suggested_fix=analysis_data.get("suggested_fix", ""),
+                    severity_assessment=analysis_data.get("severity_assessment", ""),
+                    related_issues=analysis_data.get("related_issues", []),
+                    code_suggestions=analysis_data.get("code_suggestions", []),
+                    confidence=analysis_data.get("confidence", 0.0),
+                )
+
+        return EventDetail(
+            id=event["id"],
+            app_id=event["app_id"],
+            event_type=event["event_type"],
+            severity=event.get("severity", "medium"),
+            error_type=event.get("error_type"),
+            error_message=event.get("error_message"),
+            file_path=event.get("file_path"),
+            line_number=event.get("line_number"),
+            stack_trace=event.get("stack_trace"),
+            environment=event.get("environment"),
+            status=event.get("status", "open"),
+            occurred_at=event["occurred_at"],
+            analysis_status=event.get("analysis_status", "pending"),
+            analysis=analysis,
+            model_used=event.get("model_used"),
+            analyzed_at=event.get("analyzed_at"),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to get event: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get event")
+
+
+@router.post("/events/{event_id}/analyze")
+async def trigger_event_analysis(
+    event_id: str,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user),
+) -> dict[str, str]:
+    """Trigger AI analysis for an event."""
+    try:
+        from api.db import supabase
+
+        if not supabase or not user.get("org_id"):
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        # Get event with app ownership check
+        result = (
+            supabase.table("event_metadata")
+            .select("*, apps!inner(org_id)")
+            .eq("id", event_id)
+            .single()
+            .execute()
+        )
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        event = result.data
+
+        # Verify org ownership
+        if event.get("apps", {}).get("org_id") != user["org_id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        # Check if already analyzed
+        if event.get("analysis_status") == "completed":
+            return {"status": "already_analyzed", "event_id": event_id}
+
+        # Check if AI is available
+        analyzer = get_analyzer()
+        if not analyzer.is_available:
+            raise HTTPException(
+                status_code=503,
+                detail="AI analysis is not available. Please configure an AI API key.",
+            )
+
+        # Update status to queued
+        supabase.table("event_metadata").update(
+            {"analysis_status": "queued"}
+        ).eq("id", event_id).execute()
+
+        # Run analysis in background
+        async def run_analysis():
+            try:
+                result = await analyzer.analyze_event(
+                    event_type=event.get("event_type", "error"),
+                    severity=event.get("severity", "medium"),
+                    error_type=event.get("error_type"),
+                    error_message=event.get("error_message"),
+                    file_path=event.get("file_path"),
+                    line_number=event.get("line_number"),
+                    stack_trace=event.get("stack_trace"),
+                    environment=event.get("environment", "production"),
+                    context={},
+                )
+
+                if result:
+                    analysis_data = {
+                        "summary": result.summary,
+                        "root_cause": result.root_cause,
+                        "suggested_fix": result.suggested_fix,
+                        "severity_assessment": result.severity_assessment,
+                        "related_issues": result.related_issues,
+                        "code_suggestions": result.code_suggestions,
+                        "confidence": result.confidence,
+                    }
+
+                    supabase.table("event_metadata").update(
+                        {
+                            "analysis_status": "completed",
+                            "analysis_result": analysis_data,
+                            "model_used": result.model_used,
+                            "analyzed_at": result.analyzed_at,
+                        }
+                    ).eq("id", event_id).execute()
+
+                    logger.info(f"Analysis completed for event {event_id}")
+                else:
+                    supabase.table("event_metadata").update(
+                        {"analysis_status": "failed"}
+                    ).eq("id", event_id).execute()
+
+            except Exception as e:
+                logger.exception(f"Analysis failed for event {event_id}: {e}")
+                supabase.table("event_metadata").update(
+                    {"analysis_status": "failed"}
+                ).eq("id", event_id).execute()
+
+        background_tasks.add_task(run_analysis)
+
+        return {"status": "queued", "event_id": event_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to trigger analysis: {e}")
+        raise HTTPException(status_code=500, detail="Failed to trigger analysis")
+
+
+@router.get("/ai/status")
+async def get_ai_status(
+    user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Get AI analysis service status."""
+    analyzer = get_analyzer()
+
+    return {
+        "available": analyzer.is_available,
+        "models": [model for model, _ in analyzer._available_models],
+        "message": (
+            "AI analysis is ready"
+            if analyzer.is_available
+            else "No AI API keys configured. Add GOOGLE_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY to enable."
+        ),
+    }
+
+
+@router.get("/notifications/status")
+async def get_notifications_status(
+    user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Get notification service status."""
+    notification_service = get_notification_service()
+
+    return {
+        "available": notification_service.is_available,
+        "channels": notification_service.available_channels,
+        "message": (
+            f"Notifications available via: {', '.join(notification_service.available_channels)}"
+            if notification_service.is_available
+            else "No notification channels configured. Add RESEND_API_KEY for email or TELEGRAM_BOT_TOKEN for Telegram."
+        ),
+    }
+
+
+@router.post("/events/{event_id}/notify")
+async def send_event_notification(
+    event_id: str,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Manually send notification for an event."""
+    try:
+        from api.db import supabase
+
+        if not supabase or not user.get("org_id"):
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        # Get event with app ownership check
+        result = (
+            supabase.table("event_metadata")
+            .select("*, apps!inner(org_id, name)")
+            .eq("id", event_id)
+            .single()
+            .execute()
+        )
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        event = result.data
+        app = event.get("apps", {})
+
+        # Verify org ownership
+        if app.get("org_id") != user["org_id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        # Get org notification settings
+        org_result = (
+            supabase.table("organizations")
+            .select("notification_email, telegram_chat_id")
+            .eq("id", user["org_id"])
+            .single()
+            .execute()
+        )
+
+        if not org_result.data:
+            raise HTTPException(status_code=404, detail="Organization not found")
+
+        org = org_result.data
+        notification_service = get_notification_service()
+
+        if not notification_service.is_available:
+            raise HTTPException(
+                status_code=503,
+                detail="No notification channels configured",
+            )
+
+        # Send notifications in background
+        async def send_notifications():
+            results = await notification_service.send_error_alert(
+                event=event,
+                app_name=app.get("name", "Unknown App"),
+                to_email=org.get("notification_email"),
+                telegram_chat_id=org.get("telegram_chat_id"),
+            )
+            for r in results:
+                if r.success:
+                    logger.info(f"Notification sent via {r.channel}")
+                else:
+                    logger.warning(f"Notification failed via {r.channel}: {r.error}")
+
+        background_tasks.add_task(send_notifications)
+
+        return {
+            "status": "queued",
+            "channels": notification_service.available_channels,
+            "event_id": event_id,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to send notification: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send notification")
+
+
+# ============================================
+# Settings Endpoints
+# ============================================
+
+
+class OrganizationSettings(BaseModel):
+    """Organization settings model."""
+
+    name: str
+    notification_email: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+    slack_webhook: Optional[str] = None
+    notify_on_critical: bool = True
+    notify_on_warning: bool = True
+    weekly_digest: bool = True
+
+
+class UpdateSettingsRequest(BaseModel):
+    """Request to update organization settings."""
+
+    notification_email: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+    slack_webhook: Optional[str] = None
+    notify_on_critical: Optional[bool] = None
+    notify_on_warning: Optional[bool] = None
+    weekly_digest: Optional[bool] = None
+
+
+@router.get("/settings", response_model=OrganizationSettings)
+async def get_settings(
+    user: dict = Depends(get_current_user),
+) -> OrganizationSettings:
+    """Get organization settings."""
+    try:
+        from api.db import supabase
+
+        if not supabase or not user.get("org_id"):
+            raise HTTPException(status_code=404, detail="Organization not found")
+
+        result = (
+            supabase.table("organizations")
+            .select("*")
+            .eq("id", user["org_id"])
+            .single()
+            .execute()
+        )
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Organization not found")
+
+        org = result.data
+
+        return OrganizationSettings(
+            name=org.get("name", "My Organization"),
+            notification_email=org.get("notification_email"),
+            telegram_chat_id=org.get("telegram_chat_id"),
+            slack_webhook=org.get("slack_webhook"),
+            notify_on_critical=org.get("notify_on_critical", True),
+            notify_on_warning=org.get("notify_on_warning", True),
+            weekly_digest=org.get("weekly_digest", True),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to get settings: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get settings")
+
+
+@router.patch("/settings", response_model=OrganizationSettings)
+async def update_settings(
+    request: UpdateSettingsRequest,
+    user: dict = Depends(get_current_user),
+) -> OrganizationSettings:
+    """Update organization settings."""
+    try:
+        from api.db import supabase
+
+        if not supabase or not user.get("org_id"):
+            raise HTTPException(status_code=404, detail="Organization not found")
+
+        # Build update data (only include non-None values)
+        update_data = {}
+        if request.notification_email is not None:
+            update_data["notification_email"] = request.notification_email
+        if request.telegram_chat_id is not None:
+            update_data["telegram_chat_id"] = request.telegram_chat_id
+        if request.slack_webhook is not None:
+            update_data["slack_webhook"] = request.slack_webhook
+        if request.notify_on_critical is not None:
+            update_data["notify_on_critical"] = request.notify_on_critical
+        if request.notify_on_warning is not None:
+            update_data["notify_on_warning"] = request.notify_on_warning
+        if request.weekly_digest is not None:
+            update_data["weekly_digest"] = request.weekly_digest
+
+        if not update_data:
+            # No changes, just return current settings
+            return await get_settings(user)
+
+        update_data["updated_at"] = datetime.utcnow().isoformat()
+
+        result = (
+            supabase.table("organizations")
+            .update(update_data)
+            .eq("id", user["org_id"])
+            .execute()
+        )
+
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Failed to update settings")
+
+        # Return updated settings
+        return await get_settings(user)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to update settings: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update settings")
+
+
+# ============================================
+# Service Infrastructure Endpoints
+# ============================================
+
+
+class ServiceNode(BaseModel):
+    """A service in the architecture map."""
+
+    id: str
+    type: str  # 'database', 'api', 'external', 'cache', 'frontend', 'storage'
+    name: str
+    status: str  # 'healthy', 'warning', 'critical'
+    latency: Optional[float] = None
+    error_rate: Optional[float] = None
+    url: Optional[str] = None
+    last_checked: Optional[str] = None
+
+
+class ServiceEdge(BaseModel):
+    """A connection between services."""
+
+    id: str
+    source: str
+    target: str
+    label: Optional[str] = None
+
+
+class ArchitectureMap(BaseModel):
+    """Full architecture map for an app."""
+
+    nodes: list[ServiceNode]
+    edges: list[ServiceEdge]
+
+
+@router.get("/apps/{app_id}/architecture", response_model=ArchitectureMap)
+async def get_architecture_map(
+    app_id: str,
+    user: dict = Depends(get_current_user),
+) -> ArchitectureMap:
+    """Get architecture map for an app.
+
+    This returns the connected services (databases, APIs, external services)
+    that the app uses, along with their health status.
+    """
+    try:
+        from api.db import supabase
+
+        if not supabase or not user.get("org_id"):
+            raise HTTPException(status_code=404, detail="App not found")
+
+        # Verify app ownership
+        app_result = (
+            supabase.table("apps")
+            .select("*, config")
+            .eq("id", app_id)
+            .eq("org_id", user["org_id"])
+            .single()
+            .execute()
+        )
+
+        if not app_result.data:
+            raise HTTPException(status_code=404, detail="App not found")
+
+        app = app_result.data
+        config = app.get("config", {})
+
+        # Build architecture from app config
+        # The SDK can report connected services via telemetry
+        nodes: list[ServiceNode] = []
+        edges: list[ServiceEdge] = []
+
+        # Always include the app itself as the central node
+        nodes.append(
+            ServiceNode(
+                id="app",
+                type="api",
+                name=app.get("name", "Application"),
+                status=app.get("status", "healthy"),
+                url=config.get("app_url"),
+            )
+        )
+
+        # Get connected services from config
+        services = config.get("services", [])
+
+        for i, service in enumerate(services):
+            node_id = f"service_{i}"
+            nodes.append(
+                ServiceNode(
+                    id=node_id,
+                    type=service.get("type", "external"),
+                    name=service.get("name", f"Service {i + 1}"),
+                    status=service.get("status", "healthy"),
+                    latency=service.get("latency"),
+                    error_rate=service.get("error_rate"),
+                    url=service.get("url"),
+                    last_checked=service.get("last_checked"),
+                )
+            )
+            edges.append(
+                ServiceEdge(
+                    id=f"edge_{i}",
+                    source="app",
+                    target=node_id,
+                    label=service.get("connection_type"),
+                )
+            )
+
+        # If no services configured, return default architecture
+        if len(nodes) == 1:
+            # Add common default services based on framework
+            framework = app.get("framework", "").lower()
+
+            # Database node
+            nodes.append(
+                ServiceNode(
+                    id="database",
+                    type="database",
+                    name="Database",
+                    status="healthy",
+                )
+            )
+            edges.append(
+                ServiceEdge(id="edge_db", source="app", target="database")
+            )
+
+            # Cache node (if Redis/cache detected)
+            nodes.append(
+                ServiceNode(
+                    id="cache",
+                    type="cache",
+                    name="Cache (Redis)",
+                    status="healthy",
+                )
+            )
+            edges.append(
+                ServiceEdge(id="edge_cache", source="app", target="cache")
+            )
+
+            # External API node
+            nodes.append(
+                ServiceNode(
+                    id="external",
+                    type="external",
+                    name="External APIs",
+                    status="healthy",
+                )
+            )
+            edges.append(
+                ServiceEdge(id="edge_ext", source="app", target="external")
+            )
+
+        return ArchitectureMap(nodes=nodes, edges=edges)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to get architecture: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get architecture")

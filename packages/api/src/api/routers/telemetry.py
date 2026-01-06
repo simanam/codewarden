@@ -13,10 +13,11 @@ from datetime import datetime
 from typing import Any, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from api.auth import ApiKeyInfo, verify_api_key
+from api.services.ai_analyzer import get_analyzer
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,81 @@ class HealthResponse(BaseModel):
 # ============================================
 
 
+async def run_ai_analysis(event_id: str, payload: TelemetryPayload) -> None:
+    """Background task to run AI analysis on an event."""
+    analyzer = get_analyzer()
+
+    if not analyzer.is_available:
+        logger.warning(f"AI analysis skipped for {event_id}: No AI models available")
+        return
+
+    try:
+        logger.info(f"Starting AI analysis for event {event_id}")
+
+        result = await analyzer.analyze_event(
+            event_type=payload.type,
+            severity=payload.severity,
+            error_type=payload.payload.get("error_type"),
+            error_message=payload.payload.get("error_message"),
+            file_path=payload.payload.get("file"),
+            line_number=payload.payload.get("line"),
+            stack_trace=payload.payload.get("stack_trace"),
+            environment=payload.environment,
+            context=payload.payload,
+        )
+
+        if result:
+            # Update event with analysis result
+            from api.db import supabase
+
+            if supabase:
+                analysis_data = {
+                    "summary": result.summary,
+                    "root_cause": result.root_cause,
+                    "suggested_fix": result.suggested_fix,
+                    "severity_assessment": result.severity_assessment,
+                    "related_issues": result.related_issues,
+                    "code_suggestions": result.code_suggestions,
+                    "confidence": result.confidence,
+                }
+
+                supabase.table("event_metadata").update(
+                    {
+                        "analysis_status": "completed",
+                        "analysis_result": analysis_data,
+                        "model_used": result.model_used,
+                        "analyzed_at": result.analyzed_at,
+                    }
+                ).eq("id", event_id).execute()
+
+                logger.info(
+                    f"AI analysis completed for {event_id} using {result.model_used}"
+                )
+        else:
+            # Mark as failed
+            from api.db import supabase
+
+            if supabase:
+                supabase.table("event_metadata").update(
+                    {"analysis_status": "failed"}
+                ).eq("id", event_id).execute()
+
+            logger.warning(f"AI analysis failed for {event_id}")
+
+    except Exception as e:
+        logger.exception(f"Error during AI analysis for {event_id}: {e}")
+        # Update status to failed
+        try:
+            from api.db import supabase
+
+            if supabase:
+                supabase.table("event_metadata").update(
+                    {"analysis_status": "failed"}
+                ).eq("id", event_id).execute()
+        except Exception:
+            pass
+
+
 @router.post(
     "/telemetry",
     response_model=TelemetryResponse,
@@ -95,6 +171,7 @@ class HealthResponse(BaseModel):
 )
 async def ingest_telemetry(
     payload: TelemetryPayload,
+    background_tasks: BackgroundTasks,
     api_key: ApiKeyInfo = Depends(verify_api_key),
 ) -> TelemetryResponse:
     """
@@ -103,8 +180,9 @@ async def ingest_telemetry(
     This endpoint:
     1. Validates the payload is scrubbed
     2. Generates an event ID
-    3. Queues for async processing (AI analysis, storage, notifications)
-    4. Returns immediately (non-blocking)
+    3. Stores event in database
+    4. Queues AI analysis as background task
+    5. Returns immediately (non-blocking)
     """
     # Generate event ID
     event_id = f"evt_{uuid4().hex[:16]}"
@@ -129,6 +207,8 @@ async def ingest_telemetry(
                 "error_message": payload.payload.get("error_message"),
                 "file_path": payload.payload.get("file"),
                 "line_number": payload.payload.get("line"),
+                "stack_trace": payload.payload.get("stack_trace"),
+                "environment": payload.environment,
                 "analysis_status": "pending",
                 "occurred_at": payload.timestamp.isoformat(),
             }
@@ -140,8 +220,8 @@ async def ingest_telemetry(
                 {"last_event_at": datetime.utcnow().isoformat()}
             ).eq("id", api_key.app_id).execute()
 
-        # TODO: Queue for async processing (Redis + ARQ)
-        # await redis.enqueue("process_telemetry", event_id=event_id, payload=payload.dict())
+        # Queue AI analysis as background task
+        background_tasks.add_task(run_ai_analysis, event_id, payload)
 
         return TelemetryResponse(
             id=event_id,
@@ -365,4 +445,87 @@ async def get_event_analysis(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": {"code": "internal_error", "message": "Failed to get analysis"}},
+        )
+
+
+@router.post(
+    "/events/{event_id}/analyze",
+    summary="Trigger AI analysis",
+    description="Manually trigger AI analysis for an event.",
+)
+async def trigger_analysis(
+    event_id: str,
+    background_tasks: BackgroundTasks,
+    api_key: ApiKeyInfo = Depends(verify_api_key),
+) -> dict[str, str]:
+    """Manually trigger AI analysis for an event."""
+    try:
+        from api.db import supabase
+
+        if not supabase:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database not available",
+            )
+
+        # Get event
+        result = (
+            supabase.table("event_metadata")
+            .select("*")
+            .eq("id", event_id)
+            .single()
+            .execute()
+        )
+
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": {"code": "event_not_found", "message": "Event not found"}},
+            )
+
+        event = result.data
+
+        # Verify app ownership
+        if event.get("app_id") != api_key.app_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": {"code": "access_denied", "message": "Access denied"}},
+            )
+
+        # Check if already analyzed
+        if event.get("analysis_status") == "completed":
+            return {"status": "already_analyzed", "event_id": event_id}
+
+        # Create payload from stored event data
+        payload = TelemetryPayload(
+            source="manual",
+            type=event.get("event_type", "error"),
+            severity=event.get("severity", "medium"),
+            environment=event.get("environment", "production"),
+            payload={
+                "error_type": event.get("error_type"),
+                "error_message": event.get("error_message"),
+                "file": event.get("file_path"),
+                "line": event.get("line_number"),
+                "stack_trace": event.get("stack_trace"),
+            },
+        )
+
+        # Update status to queued
+        supabase.table("event_metadata").update(
+            {"analysis_status": "queued"}
+        ).eq("id", event_id).execute()
+
+        # Queue analysis
+        background_tasks.add_task(run_ai_analysis, event_id, payload)
+
+        return {"status": "queued", "event_id": event_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to trigger analysis: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": {"code": "internal_error", "message": "Failed to trigger analysis"}},
         )

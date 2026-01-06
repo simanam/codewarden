@@ -115,6 +115,39 @@ services:
       - /app/.next
     restart: unless-stopped
 
+  # ═══════════════════════════════════════════════════════════════
+  # BACKGROUND WORKERS
+  # ═══════════════════════════════════════════════════════════════
+
+  worker:
+    build:
+      context: ./packages/api
+      dockerfile: Dockerfile
+    container_name: codewarden-worker
+    command: arq api.workers.tasks.WorkerSettings
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - DATABASE_URL=postgresql://postgres:postgres@supabase-db:5432/postgres
+      - REDIS_URL=redis://redis:6379
+      - SUPABASE_URL=${SUPABASE_URL:-https://wfcwlcahdlonyqhkqwdq.supabase.co}
+      - SUPABASE_SECRET_KEY=${SUPABASE_SECRET_KEY}
+      - SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      redis:
+        condition: service_healthy
+      supabase-db:
+        condition: service_healthy
+    volumes:
+      - ./packages/api:/app
+      - /app/.venv
+    restart: unless-stopped
+
 volumes:
   supabase-data:
   redis-data:

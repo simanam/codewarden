@@ -14,7 +14,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Copy, Check, MoreVertical, Key, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Copy, Check, MoreVertical, Key, Loader2, AlertCircle, Network } from 'lucide-react';
+import Link from 'next/link';
 import { getApps, createApp, getApiKeys, createApiKey, type App, type ApiKey } from '@/lib/api/client';
 
 export default function ProjectsPage() {
@@ -194,14 +195,27 @@ export default function ProjectsPage() {
                         {app.framework && ` • ${app.framework}`}
                       </CardDescription>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => openKeyModal(app)}
-                    >
-                      <Key className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Link href={`/dashboard/projects/${app.id}/architecture`}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="View Architecture"
+                        >
+                          <Network className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => openKeyModal(app)}
+                        title="API Keys"
+                      >
+                        <Key className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">

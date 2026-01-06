@@ -186,3 +186,75 @@ export async function getAppEvents(
   const query = params.toString() ? `?${params.toString()}` : '';
   return apiRequest<Event[]>(`/api/dashboard/apps/${appId}/events${query}`);
 }
+
+// Settings
+export interface OrganizationSettings {
+  name: string;
+  notification_email?: string;
+  telegram_chat_id?: string;
+  slack_webhook?: string;
+  notify_on_critical: boolean;
+  notify_on_warning: boolean;
+  weekly_digest: boolean;
+}
+
+export async function getSettings(): Promise<OrganizationSettings> {
+  return apiRequest<OrganizationSettings>('/api/dashboard/settings');
+}
+
+export async function updateSettings(settings: Partial<OrganizationSettings>): Promise<OrganizationSettings> {
+  return apiRequest<OrganizationSettings>('/api/dashboard/settings', {
+    method: 'PATCH',
+    body: JSON.stringify(settings),
+  });
+}
+
+// Architecture Map
+export interface ServiceNode {
+  id: string;
+  type: 'database' | 'api' | 'external' | 'cache' | 'frontend' | 'storage';
+  name: string;
+  status: 'healthy' | 'warning' | 'critical';
+  latency?: number;
+  error_rate?: number;
+  url?: string;
+  last_checked?: string;
+}
+
+export interface ServiceEdge {
+  id: string;
+  source: string;
+  target: string;
+  label?: string;
+}
+
+export interface ArchitectureMap {
+  nodes: ServiceNode[];
+  edges: ServiceEdge[];
+}
+
+export async function getArchitectureMap(appId: string): Promise<ArchitectureMap> {
+  return apiRequest<ArchitectureMap>(`/api/dashboard/apps/${appId}/architecture`);
+}
+
+// AI Status
+export interface AIStatus {
+  available: boolean;
+  models: string[];
+  message: string;
+}
+
+export async function getAIStatus(): Promise<AIStatus> {
+  return apiRequest<AIStatus>('/api/dashboard/ai/status');
+}
+
+// Notification Status
+export interface NotificationStatus {
+  available: boolean;
+  channels: string[];
+  message: string;
+}
+
+export async function getNotificationStatus(): Promise<NotificationStatus> {
+  return apiRequest<NotificationStatus>('/api/dashboard/notifications/status');
+}
