@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import settings
-from api.routers import events_router, projects_router, telemetry_router, dashboard_router
+from api.routers import events_router, projects_router, telemetry_router, dashboard_router, security_router, webhooks_router
 
 # Configure logging
 logging.basicConfig(
@@ -52,6 +52,8 @@ app.add_middleware(
 # Include routers
 app.include_router(telemetry_router)  # /v1/telemetry, /v1/evidence, /v1/health
 app.include_router(dashboard_router)  # /api/dashboard/* (for Next.js frontend)
+app.include_router(security_router)   # /api/dashboard/security/* (security scanning)
+app.include_router(webhooks_router)   # /webhooks/* (Telegram, GitHub, Stripe)
 app.include_router(events_router)     # /api/v1/events (legacy)
 app.include_router(projects_router)   # /api/v1/projects
 

@@ -357,6 +357,164 @@ class NotificationService:
 """
 
 
+    async def send_daily_brief(
+        self,
+        to_email: str,
+        org_id: str,
+        stats: dict[str, Any],
+        apps: list[dict[str, Any]],
+    ) -> NotificationResult:
+        """Send daily brief email.
+
+        Args:
+            to_email: Recipient email
+            org_id: Organization ID
+            stats: Dashboard statistics
+            apps: List of apps with their status
+
+        Returns:
+            NotificationResult
+        """
+        if "email" not in self._channels:
+            return NotificationResult(
+                channel="email",
+                success=False,
+                error="Email channel not configured",
+            )
+
+        subject = f"📊 CodeWarden Daily Brief - {datetime.now().strftime('%B %d, %Y')}"
+        html_content = self._format_daily_brief_email(stats, apps)
+
+        return await self.send_email(
+            to_email=to_email,
+            subject=subject,
+            html_content=html_content,
+        )
+
+    def _format_daily_brief_email(
+        self,
+        stats: dict[str, Any],
+        apps: list[dict[str, Any]],
+    ) -> str:
+        """Format HTML email for daily brief."""
+        total_events = stats.get("total_events_24h", 0)
+        total_errors = stats.get("total_errors_24h", 0)
+        critical_count = stats.get("critical_count", 0)
+        apps_healthy = stats.get("apps_healthy", 0)
+        total_apps = stats.get("total_apps", 0)
+
+        # Status color
+        if critical_count > 0:
+            status_color = "#dc2626"
+            status_emoji = "🔴"
+            status_text = "Critical Issues Detected"
+        elif total_errors > 0:
+            status_color = "#ea580c"
+            status_emoji = "🟠"
+            status_text = "Warnings Detected"
+        else:
+            status_color = "#16a34a"
+            status_emoji = "🟢"
+            status_text = "All Systems Healthy"
+
+        # Build apps list HTML
+        apps_html = ""
+        for app in apps[:5]:
+            app_status = "🟢" if app.get("error_count_24h", 0) == 0 else "🔴"
+            apps_html += f"""
+            <tr>
+                <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">
+                    {app_status} {app.get('name', 'Unknown')}
+                </td>
+                <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                    {app.get('event_count_24h', 0)}
+                </td>
+                <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                    {app.get('error_count_24h', 0)}
+                </td>
+            </tr>
+            """
+
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 20px; border-radius: 10px 10px 0 0;">
+                <h1 style="color: white; margin: 0; font-size: 24px;">
+                    📊 Daily Brief
+                </h1>
+                <p style="color: #94a3b8; margin: 5px 0 0 0;">
+                    {datetime.now().strftime('%B %d, %Y')}
+                </p>
+            </div>
+
+            <div style="background: white; padding: 20px; border: 1px solid #e5e7eb; border-top: none;">
+                <!-- Status Banner -->
+                <div style="background: {status_color}15; border-left: 4px solid {status_color}; padding: 15px; margin-bottom: 20px; border-radius: 0 5px 5px 0;">
+                    <span style="font-size: 20px;">{status_emoji}</span>
+                    <span style="font-weight: bold; color: {status_color}; margin-left: 10px;">{status_text}</span>
+                </div>
+
+                <!-- Stats Grid -->
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
+                    <div style="text-align: center; padding: 15px; background: #f9fafb; border-radius: 8px;">
+                        <div style="font-size: 24px; font-weight: bold; color: #111;">{total_events}</div>
+                        <div style="font-size: 12px; color: #6b7280;">Events (24h)</div>
+                    </div>
+                    <div style="text-align: center; padding: 15px; background: #f9fafb; border-radius: 8px;">
+                        <div style="font-size: 24px; font-weight: bold; color: #dc2626;">{total_errors}</div>
+                        <div style="font-size: 12px; color: #6b7280;">Errors</div>
+                    </div>
+                    <div style="text-align: center; padding: 15px; background: #f9fafb; border-radius: 8px;">
+                        <div style="font-size: 24px; font-weight: bold; color: #16a34a;">{apps_healthy}</div>
+                        <div style="font-size: 12px; color: #6b7280;">Healthy Apps</div>
+                    </div>
+                    <div style="text-align: center; padding: 15px; background: #f9fafb; border-radius: 8px;">
+                        <div style="font-size: 24px; font-weight: bold; color: #111;">{total_apps}</div>
+                        <div style="font-size: 12px; color: #6b7280;">Total Apps</div>
+                    </div>
+                </div>
+
+                <!-- Apps Table -->
+                <h3 style="margin-bottom: 10px;">App Status</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f9fafb;">
+                            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #e5e7eb;">App</th>
+                            <th style="padding: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">Events</th>
+                            <th style="padding: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">Errors</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {apps_html if apps_html else '<tr><td colspan="3" style="padding: 20px; text-align: center; color: #6b7280;">No apps configured yet</td></tr>'}
+                    </tbody>
+                </table>
+
+                <!-- CTA -->
+                <div style="margin-top: 25px; text-align: center;">
+                    <a href="https://app.codewarden.io/dashboard"
+                       style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 500;">
+                        View Full Dashboard →
+                    </a>
+                </div>
+            </div>
+
+            <div style="background: #f9fafb; padding: 15px 20px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 10px 10px; text-align: center; color: #6b7280; font-size: 12px;">
+                <p style="margin: 0;">
+                    You're receiving this daily brief because you have it enabled.
+                    <br>
+                    <a href="https://app.codewarden.io/settings/notifications" style="color: #2563eb;">Manage notification settings</a>
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+
+
 # Singleton instance
 _notification_service: Optional[NotificationService] = None
 

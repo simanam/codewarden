@@ -5,15 +5,24 @@
  *
  * @example
  * ```ts
- * import { CodeWarden } from 'codewarden-js';
+ * import { CodeWarden, ConsoleGuard, NetworkSpy } from 'codewarden-js';
  *
- * CodeWarden.init({ dsn: 'https://key@ingest.codewarden.io/123' });
- * CodeWarden.captureMessage('Hello from CodeWarden!');
+ * const client = CodeWarden.init({ dsn: 'https://key@ingest.codewarden.io/123' });
+ *
+ * // Enable console monitoring
+ * const consoleGuard = new ConsoleGuard(client, { captureErrors: true });
+ * consoleGuard.install();
+ *
+ * // Enable network monitoring
+ * const networkSpy = new NetworkSpy(client, { errorsOnly: true });
+ * networkSpy.install();
  * ```
  */
 
 export { CodeWardenClient } from './client';
 export { Airlock } from './airlock';
+export { ConsoleGuard, NetworkSpy } from './guards';
+export type { ConsoleGuardConfig, NetworkSpyConfig } from './guards';
 export type {
   CodeWardenConfig,
   Event,

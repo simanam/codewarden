@@ -11,6 +11,7 @@ import {
   LogOut,
   Shield,
   Mail,
+  FileCheck,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 
@@ -18,6 +19,8 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Events', href: '/dashboard/events', icon: AlertTriangle },
   { name: 'Projects', href: '/dashboard/projects', icon: FolderKanban },
+  { name: 'Security', href: '/dashboard/security', icon: Shield },
+  { name: 'Compliance', href: '/dashboard/compliance', icon: FileCheck },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
 
