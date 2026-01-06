@@ -23,71 +23,16 @@ import {
   Loader2,
   RefreshCw,
   ArrowRight,
+  Info,
 } from 'lucide-react';
-import Link from 'next/link';
-
-// Types
-interface SecurityStats {
-  total_apps: number;
-  apps_scanned: number;
-  total_vulnerabilities: number;
-  critical_count: number;
-  high_count: number;
-  medium_count: number;
-  low_count: number;
-  last_scan_at: string | null;
-  scans_this_week: number;
-}
-
-interface Scan {
-  id: string;
-  app_id: string;
-  scan_type: string;
-  status: string;
-  started_at: string;
-  completed_at: string | null;
-  vulnerability_count: number;
-  critical_count: number;
-  high_count: number;
-}
-
-// Mock data for development
-const mockStats: SecurityStats = {
-  total_apps: 3,
-  apps_scanned: 2,
-  total_vulnerabilities: 12,
-  critical_count: 1,
-  high_count: 3,
-  medium_count: 5,
-  low_count: 3,
-  last_scan_at: new Date().toISOString(),
-  scans_this_week: 5,
-};
-
-const mockScans: Scan[] = [
-  {
-    id: '1',
-    app_id: 'app1',
-    scan_type: 'full',
-    status: 'failed',
-    started_at: new Date(Date.now() - 3600000).toISOString(),
-    completed_at: new Date().toISOString(),
-    vulnerability_count: 8,
-    critical_count: 1,
-    high_count: 2,
-  },
-  {
-    id: '2',
-    app_id: 'app1',
-    scan_type: 'dependencies',
-    status: 'passed',
-    started_at: new Date(Date.now() - 86400000).toISOString(),
-    completed_at: new Date(Date.now() - 86000000).toISOString(),
-    vulnerability_count: 2,
-    critical_count: 0,
-    high_count: 0,
-  },
-];
+import {
+  getSecurityStats,
+  getRecentScans,
+  getApps,
+  triggerSecurityScan,
+  type SecurityStats,
+  type SecurityScan,
+} from '@/lib/api/client';
 
 function formatTime(timestamp: string | null) {
   if (!timestamp) return 'Never';
@@ -105,23 +50,32 @@ function formatTime(timestamp: string | null) {
 
 export default function SecurityPage() {
   const [stats, setStats] = useState<SecurityStats | null>(null);
-  const [recentScans, setRecentScans] = useState<Scan[]>([]);
+  const [recentScans, setRecentScans] = useState<SecurityScan[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasApps, setHasApps] = useState(false);
+  const [firstAppId, setFirstAppId] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
       try {
         setLoading(true);
-        // TODO: Fetch from API
-        // const response = await fetch('/api/dashboard/security/stats');
-        // const data = await response.json();
+        setError(null);
 
-        // Use mock data for now
-        await new Promise(resolve => setTimeout(resolve, 500));
-        setStats(mockStats);
-        setRecentScans(mockScans);
+        // Fetch security stats and recent scans from API
+        const [statsData, scansData, apps] = await Promise.all([
+          getSecurityStats(),
+          getRecentScans(10),
+          getApps(),
+        ]);
+
+        setStats(statsData);
+        setRecentScans(scansData.scans);
+        setHasApps(apps.length > 0);
+        if (apps.length > 0) {
+          setFirstAppId(apps[0].id);
+        }
       } catch (err) {
         console.error('Failed to load security data:', err);
         setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -133,11 +87,28 @@ export default function SecurityPage() {
     loadData();
   }, []);
 
-  const handleRunScan = async () => {
+  const handleRunScan = async (scanType: string = 'full') => {
+    if (!firstAppId) {
+      alert('No apps configured. Create an app first to run security scans.');
+      return;
+    }
+
     setScanning(true);
-    // TODO: Trigger scan via API
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setScanning(false);
+    try {
+      await triggerSecurityScan(firstAppId, scanType);
+      // Refresh data after scan completes
+      const [statsData, scansData] = await Promise.all([
+        getSecurityStats(),
+        getRecentScans(10),
+      ]);
+      setStats(statsData);
+      setRecentScans(scansData.scans);
+    } catch (err) {
+      console.error('Failed to trigger scan:', err);
+      alert(`Scan failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setScanning(false);
+    }
   };
 
   const severityColors = {
@@ -168,8 +139,8 @@ export default function SecurityPage() {
         description="Security scanning and vulnerability management"
         action={
           <Button
-            onClick={handleRunScan}
-            disabled={scanning}
+            onClick={() => handleRunScan('full')}
+            disabled={scanning || !hasApps}
             className="gap-2"
           >
             {scanning ? (
@@ -186,6 +157,20 @@ export default function SecurityPage() {
         {error && (
           <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400">
             {error}
+          </div>
+        )}
+
+        {/* Info banner if no apps */}
+        {!hasApps && (
+          <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-start gap-3">
+            <Info className="h-5 w-5 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-medium">No apps configured yet</p>
+              <p className="text-sm mt-1">
+                Create an app and install the SDK to start running security scans.
+                All stats will show as zero until then.
+              </p>
+            </div>
           </div>
         )}
 
@@ -302,8 +287,14 @@ export default function SecurityPage() {
               <p className="text-sm text-secondary-400 mb-4">
                 Scan dependencies for known vulnerabilities and CVEs
               </p>
-              <Button variant="outline" size="sm" className="w-full">
-                Run Dependency Scan
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => handleRunScan('dependencies')}
+                disabled={scanning || !hasApps}
+              >
+                {scanning ? 'Scanning...' : 'Run Dependency Scan'}
               </Button>
             </CardContent>
           </Card>
@@ -322,8 +313,14 @@ export default function SecurityPage() {
               <p className="text-sm text-secondary-400 mb-4">
                 Detect hardcoded secrets, API keys, and credentials
               </p>
-              <Button variant="outline" size="sm" className="w-full">
-                Run Secret Scan
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => handleRunScan('secrets')}
+                disabled={scanning || !hasApps}
+              >
+                {scanning ? 'Scanning...' : 'Run Secret Scan'}
               </Button>
             </CardContent>
           </Card>
@@ -342,8 +339,14 @@ export default function SecurityPage() {
               <p className="text-sm text-secondary-400 mb-4">
                 Static analysis for security issues and vulnerabilities
               </p>
-              <Button variant="outline" size="sm" className="w-full">
-                Run Code Scan
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => handleRunScan('code')}
+                disabled={scanning || !hasApps}
+              >
+                {scanning ? 'Scanning...' : 'Run Code Scan'}
               </Button>
             </CardContent>
           </Card>
@@ -360,9 +363,12 @@ export default function SecurityPage() {
           <CardContent>
             {recentScans.length === 0 ? (
               <div className="text-center py-8 text-secondary-500">
+                <Shield className="h-8 w-8 mx-auto mb-2 opacity-50" />
                 <p>No scans yet.</p>
                 <p className="text-sm mt-1">
-                  Run a security scan to see results here.
+                  {hasApps
+                    ? 'Run a security scan to see results here.'
+                    : 'Create an app and install the SDK to start running security scans.'}
                 </p>
               </div>
             ) : (

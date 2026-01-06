@@ -258,3 +258,174 @@ export interface NotificationStatus {
 export async function getNotificationStatus(): Promise<NotificationStatus> {
   return apiRequest<NotificationStatus>('/api/dashboard/notifications/status');
 }
+
+// Compliance
+export interface ComplianceCheck {
+  id: string;
+  name: string;
+  description: string;
+  status: 'passing' | 'failing' | 'not_configured';
+  last_checked: string | null;
+  category: string;
+  details?: string;
+}
+
+export interface ComplianceStatus {
+  score: number;
+  passing_count: number;
+  failing_count: number;
+  not_configured_count: number;
+  checks: ComplianceCheck[];
+}
+
+export async function getComplianceStatus(): Promise<ComplianceStatus> {
+  return apiRequest<ComplianceStatus>('/api/dashboard/compliance');
+}
+
+// Evidence
+export interface EvidenceEvent {
+  id: string;
+  event_type: string;
+  title?: string;
+  description?: string;
+  severity: string;
+  actor_email?: string;
+  ip_address?: string;
+  created_at: string;
+}
+
+export interface EvidenceListResponse {
+  events: EvidenceEvent[];
+  total: number;
+}
+
+export async function getEvidenceEvents(
+  appId: string,
+  options?: {
+    limit?: number;
+    offset?: number;
+    event_type?: string;
+  }
+): Promise<EvidenceListResponse> {
+  const params = new URLSearchParams();
+  if (options?.limit) params.set('limit', options.limit.toString());
+  if (options?.offset) params.set('offset', options.offset.toString());
+  if (options?.event_type) params.set('event_type', options.event_type);
+
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return apiRequest<EvidenceListResponse>(`/api/dashboard/apps/${appId}/evidence${query}`);
+}
+
+export async function getAllEvidenceEvents(
+  options?: {
+    limit?: number;
+  }
+): Promise<EvidenceEvent[]> {
+  // Get evidence from all apps by fetching apps first then their evidence
+  const apps = await getApps();
+  const allEvents: EvidenceEvent[] = [];
+
+  for (const app of apps.slice(0, 5)) { // Limit to first 5 apps
+    try {
+      const response = await getEvidenceEvents(app.id, { limit: options?.limit || 10 });
+      allEvents.push(...response.events);
+    } catch {
+      // Skip apps with no evidence
+    }
+  }
+
+  // Sort by created_at desc and limit
+  return allEvents
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, options?.limit || 20);
+}
+
+export interface ExportRequest {
+  format: 'json' | 'csv' | 'pdf';
+  start_date?: string;
+  end_date?: string;
+  event_types?: string[];
+}
+
+export interface ExportResponse {
+  id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  format: string;
+  download_url?: string;
+  record_count?: number;
+  error?: string;
+}
+
+export async function requestEvidenceExport(
+  appId: string,
+  request: ExportRequest
+): Promise<ExportResponse> {
+  return apiRequest<ExportResponse>(`/api/dashboard/apps/${appId}/evidence/export`, {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}
+
+export async function getExportStatus(exportId: string): Promise<ExportResponse> {
+  return apiRequest<ExportResponse>(`/api/dashboard/exports/${exportId}`);
+}
+
+// Security
+export interface SecurityStats {
+  total_apps: number;
+  apps_scanned: number;
+  total_vulnerabilities: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  last_scan_at: string | null;
+  scans_this_week: number;
+}
+
+export interface SecurityScan {
+  id: string;
+  app_id: string;
+  scan_type: string;
+  status: string;
+  started_at: string;
+  completed_at: string | null;
+  duration_ms?: number;
+  vulnerability_count: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+}
+
+export interface SecurityScanList {
+  scans: SecurityScan[];
+  total: number;
+}
+
+export async function getSecurityStats(): Promise<SecurityStats> {
+  return apiRequest<SecurityStats>('/api/dashboard/security/stats');
+}
+
+export async function getRecentScans(limit: number = 10): Promise<SecurityScanList> {
+  return apiRequest<SecurityScanList>(`/api/dashboard/security/scans?limit=${limit}`);
+}
+
+export async function getAppScans(appId: string, options?: {
+  limit?: number;
+  offset?: number;
+}): Promise<SecurityScanList> {
+  const params = new URLSearchParams();
+  if (options?.limit) params.set('limit', options.limit.toString());
+  if (options?.offset) params.set('offset', options.offset.toString());
+
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return apiRequest<SecurityScanList>(`/api/dashboard/apps/${appId}/scans${query}`);
+}
+
+export async function triggerSecurityScan(appId: string, scanType: string = 'full'): Promise<SecurityScan> {
+  return apiRequest<SecurityScan>(`/api/dashboard/apps/${appId}/scan`, {
+    method: 'POST',
+    body: JSON.stringify({ scan_type: scanType }),
+  });
+}

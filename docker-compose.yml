@@ -124,7 +124,7 @@ services:
       context: ./packages/api
       dockerfile: Dockerfile
     container_name: codewarden-worker
-    command: arq api.workers.tasks.WorkerSettings
+    command: poetry run arq api.workers.tasks.WorkerSettings
     environment:
       - ENVIRONMENT=development
       - DEBUG=true

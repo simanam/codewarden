@@ -617,6 +617,72 @@ async def get_org_security_stats(
         return OrgSecurityStats()
 
 
+@router.get(
+    "/security/scans",
+    response_model=ScanListResponse,
+    summary="Get recent scans across organization",
+    description="Get recent security scans from all apps in the organization.",
+)
+async def get_recent_scans(
+    user: dict = Depends(get_current_user),
+    limit: int = 10,
+) -> ScanListResponse:
+    """Get recent security scans across all apps in the organization."""
+    try:
+        from api.db import supabase
+
+        if not supabase or not user.get("org_id"):
+            return ScanListResponse(scans=[], total=0)
+
+        # Get all apps for org
+        apps_result = (
+            supabase.table("apps")
+            .select("id")
+            .eq("org_id", user["org_id"])
+            .neq("status", "archived")
+            .execute()
+        )
+
+        app_ids = [app["id"] for app in apps_result.data or []]
+
+        if not app_ids:
+            return ScanListResponse(scans=[], total=0)
+
+        # Get recent scans across all apps
+        result = (
+            supabase.table("security_scans")
+            .select("*", count="exact")
+            .in_("app_id", app_ids)
+            .order("started_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+
+        scans = [
+            ScanResponse(
+                id=scan["id"],
+                app_id=scan["app_id"],
+                scan_type=scan["scan_type"],
+                status=scan["status"],
+                started_at=scan["started_at"],
+                completed_at=scan.get("completed_at"),
+                duration_ms=scan.get("duration_ms"),
+                vulnerability_count=scan.get("vulnerability_count", 0),
+                critical_count=scan.get("critical_count", 0),
+                high_count=scan.get("high_count", 0),
+                medium_count=scan.get("medium_count", 0),
+                low_count=scan.get("low_count", 0),
+            )
+            for scan in result.data or []
+        ]
+
+        return ScanListResponse(scans=scans, total=result.count or 0)
+
+    except Exception as e:
+        logger.exception(f"Failed to get recent scans: {e}")
+        return ScanListResponse(scans=[], total=0)
+
+
 # ============================================
 # Evidence Endpoints
 # ============================================
@@ -844,6 +910,279 @@ async def export_evidence(
     except Exception as e:
         logger.exception(f"Failed to create export: {e}")
         raise HTTPException(status_code=500, detail="Failed to create export")
+
+
+# ============================================
+# Compliance Endpoints
+# ============================================
+
+
+class ComplianceCheck(BaseModel):
+    """A single compliance check."""
+
+    id: str
+    name: str
+    description: str
+    status: str  # 'passing', 'failing', 'not_configured'
+    last_checked: Optional[str] = None
+    category: str  # 'security', 'audit', 'monitoring', 'access'
+    details: Optional[str] = None
+
+
+class ComplianceResponse(BaseModel):
+    """Compliance status response."""
+
+    score: int = 0
+    passing_count: int = 0
+    failing_count: int = 0
+    not_configured_count: int = 0
+    checks: list[ComplianceCheck] = []
+
+
+@router.get(
+    "/compliance",
+    response_model=ComplianceResponse,
+    summary="Get compliance status",
+    description="Get SOC 2 readiness status based on real data.",
+)
+async def get_compliance_status(
+    user: dict = Depends(get_current_user),
+) -> ComplianceResponse:
+    """Get compliance status for the organization.
+
+    Checks are based on real data:
+    - Security Scanning: Has any app been scanned in the last 7 days?
+    - Evidence Logging: Are evidence events being recorded?
+    - Error Tracking: Are error events being received?
+    - API Key Rotation: Are API keys less than 90 days old?
+    - Vulnerability SLA: Are critical issues resolved within 72 hours?
+    """
+    try:
+        from api.db import supabase
+
+        if not supabase or not user.get("org_id"):
+            return ComplianceResponse()
+
+        org_id = user["org_id"]
+        now = datetime.utcnow()
+        week_ago = (now - timedelta(days=7)).isoformat()
+        day_ago = (now - timedelta(days=1)).isoformat()
+        ninety_days_ago = (now - timedelta(days=90)).isoformat()
+
+        checks: list[ComplianceCheck] = []
+
+        # Get all apps for the org
+        apps_result = (
+            supabase.table("apps")
+            .select("id, api_key_created_at")
+            .eq("org_id", org_id)
+            .neq("status", "archived")
+            .execute()
+        )
+        app_ids = [app["id"] for app in apps_result.data or []]
+        has_apps = len(app_ids) > 0
+
+        # 1. Security Scanning - Check if scans have run in last 7 days
+        if has_apps:
+            scans_result = (
+                supabase.table("security_scans")
+                .select("id, completed_at")
+                .in_("app_id", app_ids)
+                .gte("started_at", week_ago)
+                .execute()
+            )
+            scans_exist = len(scans_result.data or []) > 0
+            latest_scan = scans_result.data[0] if scans_result.data else None
+
+            checks.append(ComplianceCheck(
+                id="security_scanning",
+                name="Security Scanning Enabled",
+                description="Automated security scans are configured and running",
+                status="passing" if scans_exist else "failing",
+                last_checked=latest_scan["completed_at"] if latest_scan else None,
+                category="security",
+                details=f"{len(scans_result.data or [])} scans in last 7 days" if scans_exist else "No scans in last 7 days",
+            ))
+        else:
+            checks.append(ComplianceCheck(
+                id="security_scanning",
+                name="Security Scanning Enabled",
+                description="Automated security scans are configured and running",
+                status="not_configured",
+                category="security",
+                details="No apps configured",
+            ))
+
+        # 2. Evidence Logging - Check if evidence events are being recorded
+        if has_apps:
+            evidence_result = (
+                supabase.table("evidence_events")
+                .select("id, created_at")
+                .in_("app_id", app_ids)
+                .gte("created_at", week_ago)
+                .limit(1)
+                .execute()
+            )
+            evidence_exists = len(evidence_result.data or []) > 0
+
+            checks.append(ComplianceCheck(
+                id="evidence_logging",
+                name="Evidence Logging Active",
+                description="Deployment and access events are being logged",
+                status="passing" if evidence_exists else "failing",
+                last_checked=evidence_result.data[0]["created_at"] if evidence_exists else None,
+                category="audit",
+                details="Events recorded in last 7 days" if evidence_exists else "No evidence events recorded",
+            ))
+        else:
+            checks.append(ComplianceCheck(
+                id="evidence_logging",
+                name="Evidence Logging Active",
+                description="Deployment and access events are being logged",
+                status="not_configured",
+                category="audit",
+                details="No apps configured",
+            ))
+
+        # 3. Error Tracking - Check if error events are being captured
+        if has_apps:
+            events_result = (
+                supabase.table("event_metadata")
+                .select("id, occurred_at")
+                .in_("app_id", app_ids)
+                .gte("occurred_at", week_ago)
+                .limit(1)
+                .execute()
+            )
+            events_exist = len(events_result.data or []) > 0
+
+            checks.append(ComplianceCheck(
+                id="error_tracking",
+                name="Error Tracking Configured",
+                description="Application errors are being captured and tracked",
+                status="passing" if events_exist else "not_configured",
+                last_checked=events_result.data[0]["occurred_at"] if events_exist else None,
+                category="monitoring",
+                details="SDK sending events" if events_exist else "No events received - install SDK",
+            ))
+        else:
+            checks.append(ComplianceCheck(
+                id="error_tracking",
+                name="Error Tracking Configured",
+                description="Application errors are being captured and tracked",
+                status="not_configured",
+                category="monitoring",
+                details="No apps configured",
+            ))
+
+        # 4. MFA Enabled - Check Supabase auth (mock for now since we'd need auth metadata)
+        # In production, check if org has MFA enforced
+        checks.append(ComplianceCheck(
+            id="mfa_enabled",
+            name="MFA Enabled",
+            description="Multi-factor authentication is enabled for all users",
+            status="not_configured",
+            category="access",
+            details="Configure MFA in Settings → Security",
+        ))
+
+        # 5. API Key Rotation - Check if keys are less than 90 days old
+        if has_apps:
+            old_keys = 0
+            for app in apps_result.data or []:
+                key_created = app.get("api_key_created_at")
+                if key_created and key_created < ninety_days_ago:
+                    old_keys += 1
+
+            all_keys_fresh = old_keys == 0
+
+            checks.append(ComplianceCheck(
+                id="api_key_rotation",
+                name="API Key Rotation",
+                description="API keys are rotated within the required timeframe (90 days)",
+                status="passing" if all_keys_fresh else "failing",
+                last_checked=now.isoformat(),
+                category="security",
+                details=f"{old_keys} keys need rotation" if old_keys > 0 else "All keys are current",
+            ))
+        else:
+            checks.append(ComplianceCheck(
+                id="api_key_rotation",
+                name="API Key Rotation",
+                description="API keys are rotated within the required timeframe (90 days)",
+                status="not_configured",
+                category="security",
+                details="No apps configured",
+            ))
+
+        # 6. Vulnerability SLA - Check if critical vulns are resolved in 72h
+        if has_apps:
+            # Get scans with critical findings from last 7 days
+            critical_scans = (
+                supabase.table("security_scans")
+                .select("id, completed_at, critical_count")
+                .in_("app_id", app_ids)
+                .gt("critical_count", 0)
+                .gte("started_at", week_ago)
+                .execute()
+            )
+
+            if critical_scans.data:
+                # Check if there are unresolved criticals older than 72h
+                seventy_two_hours_ago = (now - timedelta(hours=72)).isoformat()
+                unresolved_old = any(
+                    scan["completed_at"] < seventy_two_hours_ago
+                    for scan in critical_scans.data
+                    if scan.get("completed_at")
+                )
+
+                checks.append(ComplianceCheck(
+                    id="vulnerability_sla",
+                    name="Vulnerability SLA",
+                    description="Critical vulnerabilities addressed within 72 hours",
+                    status="failing" if unresolved_old else "passing",
+                    last_checked=now.isoformat(),
+                    category="security",
+                    details="Critical issues pending > 72h" if unresolved_old else "All critical issues addressed in time",
+                ))
+            else:
+                checks.append(ComplianceCheck(
+                    id="vulnerability_sla",
+                    name="Vulnerability SLA",
+                    description="Critical vulnerabilities addressed within 72 hours",
+                    status="passing",
+                    last_checked=now.isoformat(),
+                    category="security",
+                    details="No critical vulnerabilities found",
+                ))
+        else:
+            checks.append(ComplianceCheck(
+                id="vulnerability_sla",
+                name="Vulnerability SLA",
+                description="Critical vulnerabilities addressed within 72 hours",
+                status="not_configured",
+                category="security",
+                details="No apps configured",
+            ))
+
+        # Calculate score
+        passing = sum(1 for c in checks if c.status == "passing")
+        failing = sum(1 for c in checks if c.status == "failing")
+        not_configured = sum(1 for c in checks if c.status == "not_configured")
+        total = len(checks)
+        score = int((passing / total) * 100) if total > 0 else 0
+
+        return ComplianceResponse(
+            score=score,
+            passing_count=passing,
+            failing_count=failing,
+            not_configured_count=not_configured,
+            checks=checks,
+        )
+
+    except Exception as e:
+        logger.exception(f"Failed to get compliance status: {e}")
+        return ComplianceResponse()
 
 
 @router.get(
