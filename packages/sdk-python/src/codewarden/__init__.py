@@ -67,9 +67,42 @@ __all__ = [
     "ConfigurationError",
     # Security scanning
     "run_security_scan",
+    "run_and_report_scan",
     # Version
     "__version__",
 ]
+
+
+def run_and_report_scan(
+    target_path: str = ".",
+    scan_type: str = "full",
+):
+    """Run security scan and send results to CodeWarden.
+
+    Convenience function that runs a security scan and automatically
+    reports results to the CodeWarden API.
+
+    Requires SDK to be initialized first with codewarden.init().
+
+    Args:
+        target_path: Directory to scan
+        scan_type: Type of scan ('full', 'dependencies', 'secrets', 'code')
+
+    Returns:
+        ScanResult with all findings
+
+    Example:
+        >>> import codewarden
+        >>> codewarden.init("https://key@api.codewarden.io")
+        >>> result = codewarden.run_and_report_scan("./src")
+        >>> print(f"Found {result.total_count} issues - reported to dashboard")
+    """
+    client = get_client()
+    return client.run_security_scan(
+        target_path=target_path,
+        scan_type=scan_type,
+        send_results=True,
+    )
 
 # Global client instance
 _client: CodeWardenClient | None = None
