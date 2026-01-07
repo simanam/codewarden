@@ -123,6 +123,7 @@ jobs:
       - name: Deploy to Railway
         run: |
           cd packages/api
+          railway link ${{ secrets.RAILWAY_PROJECT_ID }}
           railway up --service codewarden-api
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
