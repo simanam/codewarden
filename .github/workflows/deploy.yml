@@ -24,19 +24,21 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: packages/api/requirements.txt
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Install API dependencies
         run: |
           cd packages/api
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio httpx
+          poetry install --with dev
 
       - name: Run API tests
         run: |
           cd packages/api
-          pytest tests/ -v --tb=short || echo "No tests found, skipping"
+          poetry run pytest tests/ -v --tb=short || echo "No tests found, skipping"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
