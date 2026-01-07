@@ -21,7 +21,7 @@ redis = "^5.2.0"
 arq = "^0.26.0"
 supabase = "^2.11.0"
 litellm = "^1.56.0"
-structlog = "^24.4.0"
+structlog = "^25.5.0"
 python-multipart = "^0.0.20"
 # Security scanning dependencies
 pip-audit = "^2.8.0"
