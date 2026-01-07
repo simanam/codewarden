@@ -24,6 +24,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1", tags=["Telemetry"])
 
 
+@router.get("/ping", summary="Simple ping test", description="Test endpoint to verify API reachability")
+async def ping() -> dict[str, str]:
+    """Simple ping endpoint - no auth required."""
+    print("[TELEMETRY] Ping received!")
+    return {"status": "pong", "message": "Telemetry endpoint is reachable"}
+
+
 # ============================================
 # Request/Response Models
 # ============================================
@@ -174,6 +181,9 @@ async def ingest_telemetry(
     background_tasks: BackgroundTasks,
     api_key: ApiKeyInfo = Depends(verify_api_key),
 ) -> TelemetryResponse:
+    # Log immediately at the start to confirm endpoint is hit
+    print(f"[TELEMETRY] Received request from app={api_key.app_name}, type={payload.type}")
+    logger.info(f"[TELEMETRY] Processing: source={payload.source}, severity={payload.severity}")
     """
     Ingest telemetry from SDK.
 
