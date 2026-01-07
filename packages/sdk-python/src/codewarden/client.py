@@ -150,6 +150,84 @@ class CodeWardenClient:
         self._transport.send(event)
         return event["event_id"]
 
+    def send_scan_results(
+        self,
+        scan_result: Any,
+        scan_type: str = "full",
+    ) -> str:
+        """Send security scan results to CodeWarden.
+
+        Args:
+            scan_result: ScanResult from run_security_scan()
+            scan_type: Type of scan performed
+
+        Returns:
+            Evidence event ID
+        """
+        # Build findings list for the API
+        findings = []
+        for finding in scan_result.findings:
+            findings.append({
+                "type": finding.type,
+                "severity": finding.severity,
+                "title": finding.title,
+                "description": finding.description,
+                "file_path": finding.file_path,
+                "line_number": finding.line_number,
+                "cwe_id": finding.cwe_id,
+                "cve_id": finding.cve_id,
+                "package_name": finding.package_name,
+                "package_version": finding.package_version,
+                "fixed_version": finding.fixed_version,
+                "remediation": finding.remediation,
+            })
+
+        # Send as evidence event
+        evidence_data = {
+            "scan_type": scan_type,
+            "total_findings": scan_result.total_count,
+            "severity_breakdown": scan_result.severity_counts,
+            "findings": findings,
+            "errors": scan_result.errors,
+        }
+
+        return self._transport.send_evidence("AUDIT_SCAN", evidence_data)
+
+    def run_security_scan(
+        self,
+        target_path: str = ".",
+        scan_type: str = "full",
+        send_results: bool = True,
+    ) -> Any:
+        """Run security scan and optionally send results to CodeWarden.
+
+        Args:
+            target_path: Directory to scan
+            scan_type: Type of scan ('full', 'dependencies', 'secrets', 'code')
+            send_results: Whether to send results to CodeWarden API
+
+        Returns:
+            ScanResult with all findings
+
+        Example:
+            >>> client = codewarden.get_client()
+            >>> result = client.run_security_scan("./src")
+            >>> print(f"Found {result.total_count} issues")
+        """
+        from codewarden.scanners import run_security_scan
+
+        result = run_security_scan(
+            target_path=target_path,
+            scan_dependencies=scan_type in ("full", "dependencies"),
+            scan_secrets=scan_type in ("full", "secrets"),
+            scan_code=scan_type in ("full", "code"),
+        )
+
+        if send_results:
+            self.send_scan_results(result, scan_type)
+
+        return result
+
     def flush(self) -> None:
         """Flush all pending events."""
         self._transport.flush()
