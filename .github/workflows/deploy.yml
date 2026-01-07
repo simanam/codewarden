@@ -216,7 +216,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd packages/sdk-js
-          npm ci
+          npm install
 
       - name: Build package
         run: |
