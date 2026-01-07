@@ -53,8 +53,8 @@ class Settings(BaseSettings):
     # OpenObserve
     openobserve_url: str = "http://localhost:5080"
     openobserve_org: str = "default"
-    openobserve_user: str = "admin@codewarden.local"
-    openobserve_password: str = "admin123"
+    openobserve_user: str = ""
+    openobserve_password: str = ""
 
     # AI Providers
     google_api_key: str = ""

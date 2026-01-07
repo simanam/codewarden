@@ -297,16 +297,7 @@ async def verify_api_key(
         from api.db import supabase
 
         if supabase is None:
-            # Development mode without Supabase - allow mock key
-            if settings.debug and api_key == "cw_test_development_key":
-                return ApiKeyInfo(
-                    app_id="dev-app-id",
-                    org_id="dev-org-id",
-                    app_name="Development App",
-                    org_plan="pro",
-                    permissions=["telemetry:write", "evidence:write", "health:read"],
-                    key_type="test",
-                )
+            # Development mode without Supabase - require proper configuration
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail={
