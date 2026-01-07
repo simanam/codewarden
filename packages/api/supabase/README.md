@@ -102,3 +102,81 @@ YYYYMMDD_description.sql
 ```
 
 Example: `20260110_add_webhooks.sql`
+
+## Safe Migration Practices (Production)
+
+When you have customers with data, follow these rules:
+
+### DO:
+- **Add new columns** with `DEFAULT` values or as `NULLABLE`
+- **Add new tables** freely
+- **Add indexes** (non-blocking with `CONCURRENTLY`)
+- **Add new functions/triggers**
+- **Rename with views** - create a view with old name pointing to new
+
+### DON'T:
+- **Drop columns** - mark as deprecated, remove later
+- **Drop tables** - archive/soft-delete instead
+- **Rename columns directly** - use views or add new + migrate + drop old
+- **Change column types** - add new column, migrate data, drop old
+
+### Migration Template:
+```sql
+-- Migration: YYYYMMDD_description.sql
+-- Description: What this migration does
+-- Rollback: How to undo if needed
+
+BEGIN;
+
+-- Your changes here
+
+COMMIT;
+```
+
+### Example: Safe Column Rename
+```sql
+-- Instead of: ALTER TABLE apps RENAME COLUMN name TO title;
+-- Do this:
+
+-- Step 1: Add new column
+ALTER TABLE apps ADD COLUMN title TEXT;
+
+-- Step 2: Copy data
+UPDATE apps SET title = name;
+
+-- Step 3: Make it required
+ALTER TABLE apps ALTER COLUMN title SET NOT NULL;
+
+-- Step 4: Create view for backwards compatibility (optional)
+CREATE VIEW apps_v1 AS SELECT *, name AS old_name FROM apps;
+
+-- Step 5: In a LATER migration (after all code updated):
+-- ALTER TABLE apps DROP COLUMN name;
+```
+
+## CI/CD Migration Setup
+
+Migrations run automatically on push to `main` via GitHub Actions.
+
+### Required Secrets:
+1. `SUPABASE_PROJECT_ID` - From Supabase Dashboard → Settings → General
+2. `SUPABASE_ACCESS_TOKEN` - From https://supabase.com/dashboard/account/tokens
+
+### Manual Migration (if CI fails):
+```bash
+# Install Supabase CLI
+brew install supabase/tap/supabase
+
+# Link to your project
+cd packages/api
+supabase link --project-ref YOUR_PROJECT_ID
+
+# Push migrations
+supabase db push
+```
+
+### Verify Migrations Applied:
+```sql
+-- Check migration history
+SELECT * FROM supabase_migrations.schema_migrations ORDER BY version DESC;
+```
