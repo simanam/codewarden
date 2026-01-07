@@ -32,7 +32,10 @@ import {
   Clock,
   Star,
   Infinity,
+  GitBranch,
+  ChevronRight,
 } from 'lucide-react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import {
   getSettings,
@@ -489,6 +492,26 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* CI/CD Integration Card */}
+        <Link href="/dashboard/settings/integrations">
+          <Card className="card-interactive group">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-lg bg-primary/10">
+                  <GitBranch className="h-6 w-6 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-medium">CI/CD Integration</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Set up automated security scanning in your pipeline
+                  </p>
+                </div>
+                <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
 
         {/* Profile Settings */}
         <Card>
