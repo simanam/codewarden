@@ -8,8 +8,8 @@ import io
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Any, Optional
+from datetime import datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +19,9 @@ class ExportOptions:
     """Options for evidence export."""
 
     format: str = "json"  # json, csv, pdf
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
-    event_types: Optional[list[str]] = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    event_types: list[str] | None = None
     include_metadata: bool = True
 
 
@@ -35,7 +35,7 @@ class ExportResult:
     filename: str
     content_type: str
     record_count: int
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class EvidenceExporter:
@@ -411,7 +411,7 @@ class EvidenceExporter:
 
 
 # Singleton instance
-_exporter: Optional[EvidenceExporter] = None
+_exporter: EvidenceExporter | None = None
 
 
 def get_exporter() -> EvidenceExporter:

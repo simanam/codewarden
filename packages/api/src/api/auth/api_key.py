@@ -3,13 +3,11 @@
 import hashlib
 import secrets
 from dataclasses import dataclass
-from typing import Optional
 
 from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader
 
 from api.config import settings
-
 
 # API Key header scheme
 api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
@@ -218,7 +216,7 @@ def generate_api_key(key_type: str = "live") -> tuple[str, str]:
     return full_key, key_hash
 
 
-def extract_api_key(authorization: Optional[str]) -> Optional[str]:
+def extract_api_key(authorization: str | None) -> str | None:
     """Extract API key from Authorization header.
 
     Supports formats:
@@ -240,7 +238,7 @@ def extract_api_key(authorization: Optional[str]) -> Optional[str]:
 
 
 async def verify_api_key(
-    authorization: Optional[str] = Security(api_key_header),
+    authorization: str | None = Security(api_key_header),
 ) -> ApiKeyInfo:
     """Verify an API key and return app info.
 

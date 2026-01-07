@@ -3,7 +3,6 @@
 Provides command handling for the Telegram bot integration.
 """
 
-import hashlib
 import hmac
 import logging
 import secrets

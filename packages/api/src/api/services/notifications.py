@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -27,8 +27,8 @@ class NotificationResult:
 
     channel: str
     success: bool
-    message_id: Optional[str] = None
-    error: Optional[str] = None
+    message_id: str | None = None
+    error: str | None = None
 
 
 class NotificationService:
@@ -66,8 +66,8 @@ class NotificationService:
         self,
         event: dict[str, Any],
         app_name: str,
-        to_email: Optional[str] = None,
-        telegram_chat_id: Optional[str] = None,
+        to_email: str | None = None,
+        telegram_chat_id: str | None = None,
     ) -> list[NotificationResult]:
         """Send error alert notifications.
 
@@ -516,7 +516,7 @@ class NotificationService:
 
 
 # Singleton instance
-_notification_service: Optional[NotificationService] = None
+_notification_service: NotificationService | None = None
 
 
 def get_notification_service() -> NotificationService:

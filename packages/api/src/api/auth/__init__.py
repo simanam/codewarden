@@ -1,10 +1,10 @@
 """Authentication module for CodeWarden API."""
 
 from api.auth.api_key import (
-    verify_api_key,
+    ApiKeyInfo,
     generate_api_key,
     hash_api_key,
-    ApiKeyInfo,
+    verify_api_key,
 )
 
 __all__ = [

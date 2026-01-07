@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from api.models.events import Event
 
@@ -77,7 +77,7 @@ class EventProcessor:
         enriched_data = event.model_dump()
 
         # Add received timestamp
-        enriched_data["received_at"] = datetime.now(timezone.utc).isoformat()
+        enriched_data["received_at"] = datetime.now(UTC).isoformat()
 
         # TODO: Look up project_id from api_key
         # enriched_data["project_id"] = get_project_id(api_key)

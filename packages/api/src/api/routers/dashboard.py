@@ -7,13 +7,21 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Header, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Response,
+    status,
+)
 from pydantic import BaseModel, Field
 
-from api.auth import generate_api_key, hash_api_key
+from api.auth import generate_api_key
 from api.config import settings
 from api.services.ai_analyzer import get_analyzer
 from api.services.notifications import get_notification_service
@@ -29,7 +37,7 @@ router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 
 
 async def get_current_user(
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> dict[str, Any]:
     """Verify Supabase JWT and return user info.
 
@@ -116,9 +124,9 @@ class AppCreate(BaseModel):
     """Request to create a new app."""
 
     name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = None
+    description: str | None = None
     environment: str = "production"
-    framework: Optional[str] = None
+    framework: str | None = None
 
 
 class AppResponse(BaseModel):
@@ -127,12 +135,12 @@ class AppResponse(BaseModel):
     id: str
     name: str
     slug: str
-    description: Optional[str]
+    description: str | None
     environment: str
-    framework: Optional[str]
+    framework: str | None
     status: str
     created_at: str
-    last_event_at: Optional[str]
+    last_event_at: str | None
     event_count_24h: int = 0
     error_count_24h: int = 0
 
@@ -144,10 +152,10 @@ class ApiKeyResponse(BaseModel):
     name: str
     key_prefix: str
     key_type: str
-    full_key: Optional[str] = None  # Only set on creation
+    full_key: str | None = None  # Only set on creation
     permissions: list[str]
     created_at: str
-    last_used_at: Optional[str]
+    last_used_at: str | None
 
 
 class EventSummary(BaseModel):
@@ -156,14 +164,14 @@ class EventSummary(BaseModel):
     id: str
     event_type: str
     severity: str
-    error_type: Optional[str]
-    error_message: Optional[str]
-    file_path: Optional[str]
-    line_number: Optional[int]
+    error_type: str | None
+    error_message: str | None
+    file_path: str | None
+    line_number: int | None
     status: str
     occurred_at: str
     analysis_status: str
-    analysis_summary: Optional[str]
+    analysis_summary: str | None
 
 
 class DashboardStats(BaseModel):
@@ -198,18 +206,18 @@ class EventDetail(BaseModel):
     app_id: str
     event_type: str
     severity: str
-    error_type: Optional[str]
-    error_message: Optional[str]
-    file_path: Optional[str]
-    line_number: Optional[int]
-    stack_trace: Optional[str]
-    environment: Optional[str]
+    error_type: str | None
+    error_message: str | None
+    file_path: str | None
+    line_number: int | None
+    stack_trace: str | None
+    environment: str | None
     status: str
     occurred_at: str
     analysis_status: str
-    analysis: Optional[AIAnalysis]
-    model_used: Optional[str]
-    analyzed_at: Optional[str]
+    analysis: AIAnalysis | None
+    model_used: str | None
+    analyzed_at: str | None
 
 
 # ============================================
@@ -636,8 +644,8 @@ async def list_app_events(
     user: dict = Depends(get_current_user),
     limit: int = 50,
     offset: int = 0,
-    severity: Optional[str] = None,
-    status_filter: Optional[str] = None,
+    severity: str | None = None,
+    status_filter: str | None = None,
 ) -> list[EventSummary]:
     """List events for an app."""
     try:
@@ -705,7 +713,7 @@ async def list_app_events(
 async def list_all_events(
     user: dict = Depends(get_current_user),
     limit: int = 50,
-    severity: Optional[str] = None,
+    severity: str | None = None,
 ) -> list[EventSummary]:
     """List recent events across all apps."""
     try:
@@ -1179,10 +1187,10 @@ class OrganizationSettings(BaseModel):
     """Organization settings model."""
 
     name: str
-    plan_info: Optional[PlanInfo] = None
-    notification_email: Optional[str] = None
-    telegram_chat_id: Optional[str] = None
-    slack_webhook: Optional[str] = None
+    plan_info: PlanInfo | None = None
+    notification_email: str | None = None
+    telegram_chat_id: str | None = None
+    slack_webhook: str | None = None
     notify_on_critical: bool = True
     notify_on_warning: bool = True
     weekly_digest: bool = True
@@ -1191,12 +1199,12 @@ class OrganizationSettings(BaseModel):
 class UpdateSettingsRequest(BaseModel):
     """Request to update organization settings."""
 
-    notification_email: Optional[str] = None
-    telegram_chat_id: Optional[str] = None
-    slack_webhook: Optional[str] = None
-    notify_on_critical: Optional[bool] = None
-    notify_on_warning: Optional[bool] = None
-    weekly_digest: Optional[bool] = None
+    notification_email: str | None = None
+    telegram_chat_id: str | None = None
+    slack_webhook: str | None = None
+    notify_on_critical: bool | None = None
+    notify_on_warning: bool | None = None
+    weekly_digest: bool | None = None
 
 
 @router.get("/settings", response_model=OrganizationSettings)
@@ -1317,10 +1325,10 @@ class ServiceNode(BaseModel):
     type: str  # 'database', 'api', 'external', 'cache', 'frontend', 'storage'
     name: str
     status: str  # 'healthy', 'warning', 'critical'
-    latency: Optional[float] = None
-    error_rate: Optional[float] = None
-    url: Optional[str] = None
-    last_checked: Optional[str] = None
+    latency: float | None = None
+    error_rate: float | None = None
+    url: str | None = None
+    last_checked: str | None = None
 
 
 class ServiceEdge(BaseModel):
@@ -1329,7 +1337,7 @@ class ServiceEdge(BaseModel):
     id: str
     source: str
     target: str
-    label: Optional[str] = None
+    label: str | None = None
 
 
 class ArchitectureMap(BaseModel):

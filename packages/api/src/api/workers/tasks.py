@@ -10,8 +10,8 @@ Tasks include:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
@@ -21,7 +21,7 @@ from api.config import settings
 logger = logging.getLogger(__name__)
 
 # Redis connection pool
-_redis_pool: Optional[ArqRedis] = None
+_redis_pool: ArqRedis | None = None
 
 
 async def get_redis_pool() -> ArqRedis:
@@ -364,7 +364,7 @@ async def cleanup_old_events_task(ctx: dict) -> dict[str, Any]:
         # (Adjust based on plan)
         from datetime import timedelta
 
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=30)).isoformat()
 
         result = (
             supabase.table("event_metadata")

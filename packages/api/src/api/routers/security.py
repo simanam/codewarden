@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -523,7 +522,7 @@ class OrgSecurityStats(BaseModel):
     high_count: int = 0
     medium_count: int = 0
     low_count: int = 0
-    last_scan_at: Optional[str] = None
+    last_scan_at: str | None = None
     scans_this_week: int = 0
 
 
@@ -576,7 +575,7 @@ async def get_org_security_stats(
         high = 0
         medium = 0
         low = 0
-        last_scan_at: Optional[str] = None
+        last_scan_at: str | None = None
         scans_this_week = 0
 
         for scan in scans_result.data or []:
@@ -693,11 +692,11 @@ class EvidenceEventResponse(BaseModel):
 
     id: str
     event_type: str
-    title: Optional[str] = None
-    description: Optional[str] = None
+    title: str | None = None
+    description: str | None = None
     severity: str = "info"
-    actor_email: Optional[str] = None
-    ip_address: Optional[str] = None
+    actor_email: str | None = None
+    ip_address: str | None = None
     created_at: str
 
 
@@ -712,9 +711,9 @@ class ExportRequest(BaseModel):
     """Request to export evidence."""
 
     format: str = "json"  # json, csv, pdf
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    event_types: Optional[list[str]] = None
+    start_date: str | None = None
+    end_date: str | None = None
+    event_types: list[str] | None = None
 
 
 class ExportResponse(BaseModel):
@@ -723,9 +722,9 @@ class ExportResponse(BaseModel):
     id: str
     status: str  # pending, processing, completed, failed
     format: str
-    download_url: Optional[str] = None
-    record_count: Optional[int] = None
-    error: Optional[str] = None
+    download_url: str | None = None
+    record_count: int | None = None
+    error: str | None = None
 
 
 @router.get(
@@ -739,7 +738,7 @@ async def list_evidence_events(
     user: dict = Depends(get_current_user),
     limit: int = 50,
     offset: int = 0,
-    event_type: Optional[str] = None,
+    event_type: str | None = None,
 ) -> EvidenceListResponse:
     """List evidence events for an app."""
     try:
@@ -924,9 +923,9 @@ class ComplianceCheck(BaseModel):
     name: str
     description: str
     status: str  # 'passing', 'failing', 'not_configured'
-    last_checked: Optional[str] = None
+    last_checked: str | None = None
     category: str  # 'security', 'audit', 'monitoring', 'access'
-    details: Optional[str] = None
+    details: str | None = None
 
 
 class ComplianceResponse(BaseModel):

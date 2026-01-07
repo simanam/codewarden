@@ -1,7 +1,6 @@
 """CodeWarden Security Models - Models for security scanning."""
 
-from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -13,17 +12,17 @@ class SecurityFinding(BaseModel):
     type: str  # 'dependency', 'secret', 'code'
     severity: str  # 'critical', 'high', 'medium', 'low'
     title: str
-    description: Optional[str] = None
-    file_path: Optional[str] = None
-    line_number: Optional[int] = None
-    column_number: Optional[int] = None
-    cwe_id: Optional[str] = None
-    cve_id: Optional[str] = None
-    package_name: Optional[str] = None
-    package_version: Optional[str] = None
-    fixed_version: Optional[str] = None
-    remediation: Optional[str] = None
-    raw_data: Optional[dict[str, Any]] = None
+    description: str | None = None
+    file_path: str | None = None
+    line_number: int | None = None
+    column_number: int | None = None
+    cwe_id: str | None = None
+    cve_id: str | None = None
+    package_name: str | None = None
+    package_version: str | None = None
+    fixed_version: str | None = None
+    remediation: str | None = None
+    raw_data: dict[str, Any] | None = None
 
 
 class ScanTriggerRequest(BaseModel):
@@ -43,8 +42,8 @@ class ScanResponse(BaseModel):
     scan_type: str
     status: str  # 'running', 'passed', 'failed', 'error'
     started_at: str
-    completed_at: Optional[str] = None
-    duration_ms: Optional[int] = None
+    completed_at: str | None = None
+    duration_ms: int | None = None
     vulnerability_count: int = 0
     critical_count: int = 0
     high_count: int = 0
@@ -69,8 +68,8 @@ class ScanListResponse(BaseModel):
 class SecuritySummary(BaseModel):
     """Security summary for an app."""
 
-    last_scan_at: Optional[str] = None
-    last_scan_status: Optional[str] = None
+    last_scan_at: str | None = None
+    last_scan_status: str | None = None
     total_vulnerabilities: int = 0
     critical_count: int = 0
     high_count: int = 0
@@ -84,7 +83,7 @@ class SecurityConfig(BaseModel):
     """Security configuration for an app."""
 
     scan_on_startup: bool = True
-    scan_schedule: Optional[str] = None  # cron expression
+    scan_schedule: str | None = None  # cron expression
     notify_on_critical: bool = True
     notify_on_high: bool = True
     auto_create_issues: bool = False

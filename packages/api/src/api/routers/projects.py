@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import secrets
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
@@ -83,7 +83,7 @@ async def create_project(
     """Create a new project."""
     project_id = str(uuid.uuid4())
     api_key = generate_api_key()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     # TODO: Store project in database
     project = Project(

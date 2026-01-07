@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import litellm
 from litellm import acompletion
@@ -110,14 +110,14 @@ Be specific and practical. Focus on actionable advice."""
         self,
         event_type: str,
         severity: str,
-        error_type: Optional[str] = None,
-        error_message: Optional[str] = None,
-        file_path: Optional[str] = None,
-        line_number: Optional[int] = None,
-        stack_trace: Optional[str] = None,
+        error_type: str | None = None,
+        error_message: str | None = None,
+        file_path: str | None = None,
+        line_number: int | None = None,
+        stack_trace: str | None = None,
         environment: str = "production",
-        context: Optional[dict[str, Any]] = None,
-    ) -> Optional[AnalysisResult]:
+        context: dict[str, Any] | None = None,
+    ) -> AnalysisResult | None:
         """
         Analyze an event using AI.
 
@@ -193,7 +193,7 @@ Be specific and practical. Focus on actionable advice."""
                     code_suggestions=analysis_data.get("code_suggestions", []),
                     confidence=float(analysis_data.get("confidence", 0.5)),
                     model_used=model,
-                    analyzed_at=datetime.now(timezone.utc).isoformat(),
+                    analyzed_at=datetime.now(UTC).isoformat(),
                 )
 
             except json.JSONDecodeError as e:
@@ -209,7 +209,7 @@ Be specific and practical. Focus on actionable advice."""
     async def analyze_event_batch(
         self,
         events: list[dict[str, Any]],
-    ) -> list[tuple[str, Optional[AnalysisResult]]]:
+    ) -> list[tuple[str, AnalysisResult | None]]:
         """
         Analyze a batch of events.
 
@@ -219,7 +219,7 @@ Be specific and practical. Focus on actionable advice."""
         Returns:
             List of (event_id, AnalysisResult) tuples
         """
-        results: list[tuple[str, Optional[AnalysisResult]]] = []
+        results: list[tuple[str, AnalysisResult | None]] = []
 
         for event in events:
             event_id = event.get("id", "unknown")
@@ -244,7 +244,7 @@ Be specific and practical. Focus on actionable advice."""
 
 
 # Singleton instance
-_analyzer: Optional[AIAnalyzer] = None
+_analyzer: AIAnalyzer | None = None
 
 
 def get_analyzer() -> AIAnalyzer:

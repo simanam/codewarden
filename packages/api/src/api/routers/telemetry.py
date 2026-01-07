@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -44,7 +44,7 @@ class TelemetryPayload(BaseModel):
     timestamp: datetime = Field(
         default_factory=datetime.utcnow, description="Event timestamp"
     )
-    trace_id: Optional[str] = Field(None, description="Trace ID for correlation")
+    trace_id: str | None = Field(None, description="Trace ID for correlation")
 
 
 class TelemetryResponse(BaseModel):

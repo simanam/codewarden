@@ -1,14 +1,21 @@
 """CodeWarden API - Main Application."""
 
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import settings
-from api.routers import events_router, projects_router, telemetry_router, dashboard_router, security_router, webhooks_router
+from api.routers import (
+    dashboard_router,
+    events_router,
+    projects_router,
+    security_router,
+    telemetry_router,
+    webhooks_router,
+)
 
 # Configure logging
 logging.basicConfig(
