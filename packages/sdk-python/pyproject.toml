@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "codewarden"
-version = "0.1.0"
+version = "0.1.2"
 description = "CodeWarden Python SDK - Security and observability for your applications"
 authors = ["CodeWarden Team <team@codewarden.io>"]
 readme = "README.md"
