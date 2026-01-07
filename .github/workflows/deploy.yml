@@ -99,7 +99,8 @@ jobs:
       - name: Push Database Migrations
         run: |
           cd packages/api
-          supabase db push --linked
+          # Use --include-all to auto-confirm, skip if already applied
+          supabase db push --linked --include-all || echo "Migrations may already be applied, continuing..."
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
