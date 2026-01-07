@@ -26,14 +26,23 @@ import {
   Info,
   ChevronDown,
   FolderKanban,
+  X,
+  FileCode,
+  Package,
+  Terminal,
+  Copy,
+  Check,
 } from 'lucide-react';
 import {
   getSecurityStats,
   getRecentScans,
   getApps,
   triggerSecurityScan,
+  getScanDetails,
   type SecurityStats,
   type SecurityScan,
+  type SecurityScanDetail,
+  type SecurityFinding,
   type App,
 } from '@/lib/api/client';
 
@@ -60,9 +69,44 @@ export default function SecurityPage() {
   const [apps, setApps] = useState<App[]>([]);
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [showAppSelector, setShowAppSelector] = useState(false);
+  const [selectedScan, setSelectedScan] = useState<SecurityScanDetail | null>(null);
+  const [loadingScan, setLoadingScan] = useState(false);
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
 
   const selectedApp = apps.find(app => app.id === selectedAppId);
   const hasApps = apps.length > 0;
+
+  const handleScanClick = async (scanId: string) => {
+    setLoadingScan(true);
+    try {
+      const details = await getScanDetails(scanId);
+      setSelectedScan(details);
+    } catch (err) {
+      console.error('Failed to load scan details:', err);
+      alert(`Failed to load scan details: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setLoadingScan(false);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedCommand(text);
+    setTimeout(() => setCopiedCommand(null), 2000);
+  };
+
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'dependency':
+        return <Package className="h-4 w-4" />;
+      case 'secret':
+        return <Key className="h-4 w-4" />;
+      case 'code':
+        return <FileCode className="h-4 w-4" />;
+      default:
+        return <Bug className="h-4 w-4" />;
+    }
+  };
 
   useEffect(() => {
     async function loadApps() {
@@ -444,6 +488,7 @@ export default function SecurityPage() {
                 {recentScans.map((scan) => (
                   <div
                     key={scan.id}
+                    onClick={() => handleScanClick(scan.id)}
                     className="flex items-center justify-between p-4 rounded-lg bg-secondary-800/50 hover:bg-secondary-800 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-4">
@@ -495,6 +540,193 @@ export default function SecurityPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Scan Details Modal */}
+      {(selectedScan || loadingScan) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => !loadingScan && setSelectedScan(null)}
+          />
+          <div className="relative w-full max-w-4xl max-h-[85vh] bg-secondary-900 border border-secondary-700 rounded-xl shadow-2xl overflow-hidden flex flex-col m-4">
+            {loadingScan ? (
+              <div className="flex items-center justify-center p-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
+              </div>
+            ) : selectedScan && (
+              <>
+                {/* Modal Header */}
+                <div className="flex items-center justify-between p-6 border-b border-secondary-700">
+                  <div>
+                    <h2 className="text-xl font-semibold capitalize">
+                      {selectedScan.scan_type} Scan Results
+                    </h2>
+                    <p className="text-sm text-secondary-400 mt-1">
+                      {formatTime(selectedScan.completed_at ?? selectedScan.started_at)}
+                      {selectedScan.duration_ms && ` • ${(selectedScan.duration_ms / 1000).toFixed(1)}s`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`text-sm px-3 py-1 rounded-full ${
+                      selectedScan.status === 'passed' ? 'bg-green-500/20 text-green-400' :
+                      selectedScan.status === 'failed' ? 'bg-red-500/20 text-red-400' :
+                      'bg-yellow-500/20 text-yellow-400'
+                    }`}>
+                      {selectedScan.status}
+                    </span>
+                    <button
+                      onClick={() => setSelectedScan(null)}
+                      className="p-2 rounded-lg hover:bg-secondary-800 transition-colors"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Summary Stats */}
+                <div className="grid grid-cols-4 gap-4 p-6 border-b border-secondary-700">
+                  <div className={`p-3 rounded-lg ${severityColors.critical}`}>
+                    <div className="text-lg font-bold">{selectedScan.critical_count}</div>
+                    <div className="text-xs">Critical</div>
+                  </div>
+                  <div className={`p-3 rounded-lg ${severityColors.high}`}>
+                    <div className="text-lg font-bold">{selectedScan.high_count}</div>
+                    <div className="text-xs">High</div>
+                  </div>
+                  <div className={`p-3 rounded-lg ${severityColors.medium}`}>
+                    <div className="text-lg font-bold">{selectedScan.medium_count}</div>
+                    <div className="text-xs">Medium</div>
+                  </div>
+                  <div className={`p-3 rounded-lg ${severityColors.low}`}>
+                    <div className="text-lg font-bold">{selectedScan.low_count}</div>
+                    <div className="text-xs">Low</div>
+                  </div>
+                </div>
+
+                {/* Findings List */}
+                <div className="flex-1 overflow-auto p-6">
+                  {selectedScan.findings.length === 0 ? (
+                    <div className="text-center py-12 text-secondary-500">
+                      <CheckCircle className="h-12 w-12 mx-auto mb-3 text-green-500" />
+                      <p className="font-medium">No vulnerabilities found!</p>
+                      <p className="text-sm mt-1">Your code passed all security checks.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-medium text-secondary-400 uppercase tracking-wide">
+                        {selectedScan.findings.length} Finding{selectedScan.findings.length !== 1 ? 's' : ''}
+                      </h3>
+                      {selectedScan.findings.map((finding) => (
+                        <div
+                          key={finding.id}
+                          className="p-4 rounded-lg bg-secondary-800/50 border border-secondary-700"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`p-2 rounded-lg ${
+                              finding.type === 'dependency' ? 'bg-purple-500/10 text-purple-400' :
+                              finding.type === 'secret' ? 'bg-red-500/10 text-red-400' :
+                              'bg-blue-500/10 text-blue-400'
+                            }`}>
+                              {getTypeIcon(finding.type)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="font-medium">{finding.title}</h4>
+                                <span className={`text-xs px-2 py-0.5 rounded ${
+                                  severityColors[finding.severity as keyof typeof severityColors] || severityColors.medium
+                                }`}>
+                                  {finding.severity}
+                                </span>
+                                {finding.cve_id && (
+                                  <span className="text-xs px-2 py-0.5 rounded bg-secondary-700 text-secondary-300">
+                                    {finding.cve_id}
+                                  </span>
+                                )}
+                                {finding.cwe_id && (
+                                  <span className="text-xs px-2 py-0.5 rounded bg-secondary-700 text-secondary-300">
+                                    {finding.cwe_id}
+                                  </span>
+                                )}
+                              </div>
+                              {finding.description && (
+                                <p className="text-sm text-secondary-400 mt-2">
+                                  {finding.description}
+                                </p>
+                              )}
+                              {(finding.file_path || finding.package_name) && (
+                                <div className="flex items-center gap-4 mt-3 text-sm">
+                                  {finding.file_path && (
+                                    <span className="text-secondary-500">
+                                      <FileCode className="h-3.5 w-3.5 inline mr-1" />
+                                      {finding.file_path}
+                                      {finding.line_number && `:${finding.line_number}`}
+                                    </span>
+                                  )}
+                                  {finding.package_name && (
+                                    <span className="text-secondary-500">
+                                      <Package className="h-3.5 w-3.5 inline mr-1" />
+                                      {finding.package_name}
+                                      {finding.package_version && `@${finding.package_version}`}
+                                      {finding.fixed_version && (
+                                        <span className="text-green-400 ml-1">
+                                          → {finding.fixed_version}
+                                        </span>
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              {finding.remediation && (
+                                <div className="mt-3 p-3 rounded bg-secondary-900 border border-secondary-700">
+                                  <p className="text-xs font-medium text-secondary-400 mb-1">Remediation</p>
+                                  <p className="text-sm">{finding.remediation}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Fix Commands */}
+                  {selectedScan.fix_commands && selectedScan.fix_commands.length > 0 && (
+                    <div className="mt-6 pt-6 border-t border-secondary-700">
+                      <h3 className="text-sm font-medium text-secondary-400 uppercase tracking-wide mb-3">
+                        Quick Fix Commands
+                      </h3>
+                      <div className="space-y-2">
+                        {selectedScan.fix_commands.map((cmd, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between p-3 rounded-lg bg-secondary-800 font-mono text-sm"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Terminal className="h-4 w-4 text-secondary-500" />
+                              <code>{cmd}</code>
+                            </div>
+                            <button
+                              onClick={() => copyToClipboard(cmd)}
+                              className="p-1.5 rounded hover:bg-secondary-700 transition-colors"
+                              title="Copy to clipboard"
+                            >
+                              {copiedCommand === cmd ? (
+                                <Check className="h-4 w-4 text-green-400" />
+                              ) : (
+                                <Copy className="h-4 w-4 text-secondary-400" />
+                              )}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -472,6 +472,33 @@ export async function triggerSecurityScan(appId: string, scanType: string = 'ful
   });
 }
 
+// Scan Details
+export interface SecurityFinding {
+  id: string;
+  type: string;
+  severity: string;
+  title: string;
+  description?: string;
+  file_path?: string;
+  line_number?: number;
+  column_number?: number;
+  cwe_id?: string;
+  cve_id?: string;
+  package_name?: string;
+  package_version?: string;
+  fixed_version?: string;
+  remediation?: string;
+}
+
+export interface SecurityScanDetail extends SecurityScan {
+  findings: SecurityFinding[];
+  fix_commands: string[];
+}
+
+export async function getScanDetails(scanId: string): Promise<SecurityScanDetail> {
+  return apiRequest<SecurityScanDetail>(`/api/dashboard/scans/${scanId}`);
+}
+
 // Profile Repair (for users who signed up before the trigger fix)
 export interface RepairProfileResponse {
   status: 'already_configured' | 'repaired';
