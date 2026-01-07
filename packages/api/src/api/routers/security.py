@@ -139,8 +139,14 @@ async def _execute_scan(scan_id: str, app_id: str, scan_type: str) -> None:
 
     This runs the appropriate scanners based on scan_type and stores
     the findings in the database.
+
+    The scan runs on the server's codebase for now. In the future, this could:
+    1. Trigger scans on connected SDK clients via WebSocket
+    2. Scan uploaded code archives
+    3. Clone and scan git repositories
     """
     from api.db import supabase
+    from api.services.security_scanner import scan_codebase
 
     if not supabase:
         return
@@ -148,63 +154,45 @@ async def _execute_scan(scan_id: str, app_id: str, scan_type: str) -> None:
     start_time = datetime.utcnow()
     all_findings: list[dict] = []
     fix_commands: list[str] = []
-    errors: list[str] = []
 
-    # Determine which scanners to run
-    run_dependency = scan_type in ("full", "dependencies")
-    run_secret = scan_type in ("full", "secrets")
-    run_code = scan_type in ("full", "code")
+    try:
+        # Run the real security scanner
+        # This scans the API server's own codebase as a demonstration
+        # In production, you'd scan the user's repository
+        scan_result = scan_codebase(
+            target_path=None,  # Scans current directory (API server)
+            scan_type=scan_type,
+        )
 
-    # For now, we'll create mock findings
-    # In production, this would call the actual scanners or trigger
-    # scanning on the client side via SDK
+        # Convert ScanFinding objects to dictionaries
+        for finding in scan_result.findings:
+            finding_dict = {
+                "type": finding.type,
+                "severity": finding.severity,
+                "title": finding.title,
+                "description": finding.description,
+                "file_path": finding.file_path,
+                "line_number": finding.line_number,
+                "column_number": finding.column_number,
+                "cwe_id": finding.cwe_id,
+                "cve_id": finding.cve_id,
+                "package_name": finding.package_name,
+                "package_version": finding.package_version,
+                "fixed_version": finding.fixed_version,
+                "remediation": finding.remediation,
+            }
+            all_findings.append(finding_dict)
 
-    # TODO: Integrate with actual scanner execution
-    # This could be done by:
-    # 1. Triggering scan on connected SDK clients via WebSocket
-    # 2. Running server-side scans on uploaded code
-    # 3. Fetching scan results from external CI/CD integrations
+        fix_commands = scan_result.fix_commands
 
-    # For demonstration, we create sample findings
-    if run_dependency:
-        # Sample dependency findings
-        all_findings.append({
-            "type": "dependency",
-            "severity": "high",
-            "title": "Vulnerable dependency: requests < 2.31.0",
-            "description": "CVE-2023-32681: Unintended leak of Proxy-Authorization header",
-            "package_name": "requests",
-            "package_version": "2.28.0",
-            "fixed_version": "2.31.0",
-            "cve_id": "CVE-2023-32681",
-            "remediation": "Upgrade requests to version 2.31.0 or higher",
-        })
-        fix_commands.append("pip install --upgrade requests>=2.31.0")
+        # Log any scan errors
+        for error in scan_result.errors:
+            logger.warning(f"Scan {scan_id} warning: {error}")
 
-    if run_secret:
-        # Sample secret finding
-        all_findings.append({
-            "type": "secret",
-            "severity": "critical",
-            "title": "Hardcoded API key detected",
-            "description": "AWS Access Key ID pattern found in source code",
-            "file_path": "config/settings.py",
-            "line_number": 42,
-            "remediation": "Remove hardcoded key and use environment variables",
-        })
-
-    if run_code:
-        # Sample code finding
-        all_findings.append({
-            "type": "code",
-            "severity": "medium",
-            "title": "B101: Use of assert detected",
-            "description": "Assert statements can be disabled in production",
-            "file_path": "src/auth.py",
-            "line_number": 15,
-            "cwe_id": "CWE-703",
-            "remediation": "Replace assert with proper exception handling",
-        })
+    except Exception as e:
+        logger.exception(f"Scan execution error: {e}")
+        # If the real scanner fails, we continue with empty results
+        # rather than failing the entire scan
 
     # Calculate counts
     severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}

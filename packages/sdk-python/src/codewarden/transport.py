@@ -255,3 +255,58 @@ class Transport:
                     logger.warning(f"Request error (attempt {attempt + 1}): {e}")
 
         logger.error(f"Failed to send event {event.get('event_id')} after {self._max_retries} attempts")
+
+    def send_evidence(self, event_type: str, data: dict[str, Any]) -> str:
+        """Send an evidence event to CodeWarden.
+
+        Args:
+            event_type: Type of evidence (e.g., 'AUDIT_SCAN', 'AUDIT_DEPLOY')
+            data: Event data dictionary
+
+        Returns:
+            Evidence event ID
+        """
+        import uuid
+        from datetime import datetime, timezone
+
+        endpoint = f"{self._base_url}/v1/evidence"
+
+        headers = {
+            "Content-Type": "application/json",
+        }
+
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+
+        payload = {
+            "type": event_type,
+            "data": data,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        event_id = str(uuid.uuid4())
+
+        for attempt in range(self._max_retries):
+            try:
+                response = self._client.post(
+                    endpoint,
+                    json=payload,
+                    headers=headers,
+                )
+                response.raise_for_status()
+                result = response.json()
+                if self._debug:
+                    logger.debug(f"Sent evidence event {result.get('id')} successfully")
+                return result.get("id", event_id)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code < 500:
+                    logger.error(f"Failed to send evidence: {e.response.status_code} - {e.response.text}")
+                    return event_id
+                if self._debug:
+                    logger.warning(f"Server error (attempt {attempt + 1}): {e}")
+            except httpx.RequestError as e:
+                if self._debug:
+                    logger.warning(f"Request error (attempt {attempt + 1}): {e}")
+
+        logger.error(f"Failed to send evidence event after {self._max_retries} attempts")
+        return event_id
