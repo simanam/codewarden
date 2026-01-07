@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Copy, Check, Key, Loader2, AlertCircle, Network, Trash2, FolderKanban } from 'lucide-react';
+import { Plus, Copy, Check, Key, Loader2, AlertCircle, Network, Trash2, FolderKanban, Terminal, Code } from 'lucide-react';
 import Link from 'next/link';
 import { getApps, createApp, getApiKeys, createApiKey, deleteApp, type App, type ApiKey } from '@/lib/api/client';
 
@@ -39,6 +39,7 @@ export default function ProjectsPage() {
   const [creatingKey, setCreatingKey] = useState(false);
 
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [keyModalTab, setKeyModalTab] = useState<'setup' | 'keys'>('setup');
 
   // Delete confirmation state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -128,7 +129,131 @@ export default function ProjectsPage() {
     setSelectedApp(app);
     setShowKeyModal(true);
     setNewKey(null);
+    setKeyModalTab('setup');
     loadApiKeys(app.id);
+  }
+
+  function getSetupInstructions(framework: string | undefined, apiKey: string) {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.codewarden.io';
+
+    const pythonInstall = 'pip install codewarden';
+    const jsInstall = 'npm install @codewarden/sdk';
+
+    switch (framework) {
+      case 'fastapi':
+        return {
+          install: pythonInstall,
+          language: 'python',
+          code: `# main.py
+import codewarden
+from codewarden.middleware.fastapi import CodeWardenMiddleware
+
+# Initialize CodeWarden (add before app = FastAPI())
+codewarden.init(
+    dsn="${apiKey}",
+    environment="production",
+)
+
+app = FastAPI()
+
+# Add middleware (after app = FastAPI())
+app.add_middleware(
+    CodeWardenMiddleware,
+    capture_exceptions=True,
+    excluded_paths=["/health"],
+)`,
+        };
+      case 'flask':
+        return {
+          install: pythonInstall,
+          language: 'python',
+          code: `# app.py
+import codewarden
+from codewarden.middleware.flask import CodeWardenMiddleware
+
+# Initialize CodeWarden
+codewarden.init(
+    dsn="${apiKey}",
+    environment="production",
+)
+
+app = Flask(__name__)
+
+# Add middleware
+app.wsgi_app = CodeWardenMiddleware(app.wsgi_app)`,
+        };
+      case 'django':
+        return {
+          install: pythonInstall,
+          language: 'python',
+          code: `# settings.py
+CODEWARDEN_DSN = "${apiKey}"
+
+MIDDLEWARE = [
+    'codewarden.middleware.django.CodeWardenMiddleware',
+    # ... other middleware
+]
+
+# wsgi.py or manage.py
+import codewarden
+codewarden.init(
+    dsn="${apiKey}",
+    environment="production",
+)`,
+        };
+      case 'nextjs':
+        return {
+          install: jsInstall,
+          language: 'typescript',
+          code: `// lib/codewarden.ts
+import { CodeWarden } from '@codewarden/sdk';
+
+export const cw = new CodeWarden({
+  apiKey: '${apiKey}',
+  environment: 'production',
+});
+
+// In your error boundary or _app.tsx
+cw.captureException(error);`,
+        };
+      case 'express':
+        return {
+          install: jsInstall,
+          language: 'javascript',
+          code: `// app.js
+const { CodeWarden } = require('@codewarden/sdk');
+
+const cw = new CodeWarden({
+  apiKey: '${apiKey}',
+  environment: 'production',
+});
+
+// Error handling middleware (add last)
+app.use((err, req, res, next) => {
+  cw.captureException(err);
+  res.status(500).send('Something broke!');
+});`,
+        };
+      default:
+        return {
+          install: pythonInstall,
+          language: 'python',
+          code: `# For Python applications
+import codewarden
+
+codewarden.init(
+    dsn="${apiKey}",
+    environment="production",
+)
+
+# Capture errors manually
+try:
+    # your code
+except Exception as e:
+    codewarden.capture_exception(e)
+    raise`,
+        };
+    }
   }
 
   function confirmDelete(app: App) {
@@ -352,20 +477,45 @@ export default function ProjectsPage() {
           </div>
         )}
 
-        {/* API Keys Modal */}
+        {/* API Keys & Setup Modal */}
         {showKeyModal && selectedApp && (
           <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <Card className="w-full max-w-lg animate-scale-in">
-              <CardHeader>
-                <CardTitle>API Keys - {selectedApp.name}</CardTitle>
-                <CardDescription>Manage API keys for SDK authentication</CardDescription>
+            <Card className="w-full max-w-2xl animate-scale-in max-h-[90vh] flex flex-col">
+              <CardHeader className="pb-2">
+                <CardTitle>{selectedApp.name}</CardTitle>
+                <CardDescription>SDK setup and API key management</CardDescription>
+                {/* Tabs */}
+                <div className="flex gap-1 mt-3 border-b border-border">
+                  <button
+                    onClick={() => setKeyModalTab('setup')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      keyModalTab === 'setup'
+                        ? 'border-primary text-primary'
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Code className="h-4 w-4 inline mr-2" />
+                    Setup Instructions
+                  </button>
+                  <button
+                    onClick={() => setKeyModalTab('keys')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      keyModalTab === 'keys'
+                        ? 'border-primary text-primary'
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Key className="h-4 w-4 inline mr-2" />
+                    API Keys
+                  </button>
+                </div>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {/* New Key Alert */}
+              <CardContent className="space-y-4 overflow-auto flex-1">
+                {/* New Key Alert - Show on both tabs */}
                 {newKey?.full_key && (
                   <div className="p-4 rounded-lg bg-success/10 border border-success/20">
                     <p className="text-sm font-medium text-success mb-2">
-                      New API key created! Copy it now - you won&apos;t see it again.
+                      API key created! Copy it now - you won&apos;t see it again.
                     </p>
                     <div className="flex items-center gap-2">
                       <Input
@@ -388,61 +538,196 @@ export default function ProjectsPage() {
                   </div>
                 )}
 
-                {/* Existing Keys */}
-                {loadingKeys ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                  </div>
-                ) : apiKeys.length === 0 ? (
-                  <div className="text-center py-8">
-                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
-                      <Key className="h-6 w-6 text-muted-foreground" />
-                    </div>
-                    <p className="font-medium text-sm">No API keys yet</p>
-                    <p className="text-xs text-muted-foreground mt-1">Create one to start using the SDK.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {apiKeys.map((key) => (
-                      <div
-                        key={key.id}
-                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
-                      >
-                        <div>
-                          <p className="text-sm font-medium">{key.name}</p>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {key.key_prefix}...
-                          </p>
+                {keyModalTab === 'setup' && (
+                  <>
+                    {/* Check if we have an API key to show instructions */}
+                    {apiKeys.length === 0 && !newKey ? (
+                      <div className="text-center py-8">
+                        <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
+                          <Key className="h-6 w-6 text-muted-foreground" />
                         </div>
-                        <div className="text-right">
-                          <span className="badge badge-info text-xs">{key.key_type}</span>
-                          {key.last_used_at && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Last used: {new Date(key.last_used_at).toLocaleDateString()}
-                            </p>
-                          )}
-                        </div>
+                        <p className="font-medium text-sm">Generate an API key first</p>
+                        <p className="text-xs text-muted-foreground mt-1 mb-4">
+                          You need an API key to set up the SDK.
+                        </p>
+                        <Button onClick={handleCreateKey} disabled={creatingKey}>
+                          {creatingKey ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                          Generate API Key
+                        </Button>
                       </div>
-                    ))}
-                  </div>
+                    ) : (
+                      <>
+                        {/* Setup Instructions */}
+                        {(() => {
+                          const activeKey = newKey?.full_key || (apiKeys[0] ? `${apiKeys[0].key_prefix}...` : '');
+                          const instructions = getSetupInstructions(selectedApp.framework, newKey?.full_key || 'YOUR_API_KEY');
+                          return (
+                            <div className="space-y-4">
+                              {/* Step 1: Install */}
+                              <div>
+                                <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                                  <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">1</span>
+                                  Install the SDK
+                                </h4>
+                                <div className="relative">
+                                  <pre className="p-3 rounded-lg bg-muted text-sm font-mono overflow-x-auto">
+                                    {instructions.install}
+                                  </pre>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="absolute top-2 right-2 h-7 w-7"
+                                    onClick={() => copyToClipboard(instructions.install, 'install')}
+                                  >
+                                    {copiedKey === 'install' ? (
+                                      <Check className="h-3 w-3 text-success" />
+                                    ) : (
+                                      <Copy className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                </div>
+                              </div>
+
+                              {/* Step 2: API Key */}
+                              <div>
+                                <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                                  <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">2</span>
+                                  Your API Key
+                                </h4>
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    value={newKey?.full_key || (apiKeys[0] ? `${apiKeys[0].key_prefix}••••••••` : 'Generate a key first')}
+                                    readOnly
+                                    className="font-mono text-sm"
+                                  />
+                                  {newKey?.full_key && (
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      onClick={() => copyToClipboard(newKey.full_key!, 'apikey')}
+                                    >
+                                      {copiedKey === 'apikey' ? (
+                                        <Check className="h-4 w-4 text-success" />
+                                      ) : (
+                                        <Copy className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  )}
+                                </div>
+                                {!newKey?.full_key && apiKeys.length > 0 && (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    For security, existing keys are masked. Generate a new key to see the full value.
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Step 3: Code */}
+                              <div>
+                                <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                                  <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">3</span>
+                                  Add to your code
+                                  {selectedApp.framework && (
+                                    <span className="badge badge-info text-xs ml-1">{selectedApp.framework}</span>
+                                  )}
+                                </h4>
+                                <div className="relative">
+                                  <pre className="p-3 rounded-lg bg-muted text-xs font-mono overflow-x-auto max-h-64">
+                                    {instructions.code}
+                                  </pre>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="absolute top-2 right-2 h-7 w-7"
+                                    onClick={() => copyToClipboard(instructions.code, 'code')}
+                                  >
+                                    {copiedKey === 'code' ? (
+                                      <Check className="h-3 w-3 text-success" />
+                                    ) : (
+                                      <Copy className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                </div>
+                              </div>
+
+                              {/* Step 4: Test */}
+                              <div>
+                                <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                                  <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">4</span>
+                                  Test the integration
+                                </h4>
+                                <p className="text-sm text-muted-foreground">
+                                  Trigger an error in your app and check back here - it should appear in your dashboard within seconds!
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </>
+                    )}
+                  </>
                 )}
 
-                <div className="flex justify-between pt-4 border-t border-border">
-                  <Button variant="outline" onClick={handleCreateKey} disabled={creatingKey}>
-                    {creatingKey ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
-                    Generate New Key
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setShowKeyModal(false);
-                      setNewKey(null);
-                    }}
-                  >
-                    Close
-                  </Button>
-                </div>
+                {keyModalTab === 'keys' && (
+                  <>
+                    {/* Existing Keys */}
+                    {loadingKeys ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      </div>
+                    ) : apiKeys.length === 0 ? (
+                      <div className="text-center py-8">
+                        <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
+                          <Key className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                        <p className="font-medium text-sm">No API keys yet</p>
+                        <p className="text-xs text-muted-foreground mt-1">Create one to start using the SDK.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {apiKeys.map((key) => (
+                          <div
+                            key={key.id}
+                            className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                          >
+                            <div>
+                              <p className="text-sm font-medium">{key.name}</p>
+                              <p className="text-xs text-muted-foreground font-mono">
+                                {key.key_prefix}••••••••
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <span className="badge badge-info text-xs">{key.key_type}</span>
+                              {key.last_used_at && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Last used: {new Date(key.last_used_at).toLocaleDateString()}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <Button variant="outline" onClick={handleCreateKey} disabled={creatingKey} className="w-full">
+                      {creatingKey ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                      Generate New Key
+                    </Button>
+                  </>
+                )}
               </CardContent>
+
+              {/* Footer */}
+              <div className="px-6 py-4 border-t border-border flex justify-end">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setShowKeyModal(false);
+                    setNewKey(null);
+                  }}
+                >
+                  Close
+                </Button>
+              </div>
             </Card>
           </div>
         )}

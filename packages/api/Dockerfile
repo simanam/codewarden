@@ -26,8 +26,8 @@ COPY . .
 # Install the package
 RUN poetry install --no-interaction
 
-# Expose port
+# Expose port (Railway will use $PORT)
 EXPOSE 8000
 
-# Run the application
-CMD ["poetry", "run", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Run the application (use shell form to expand $PORT, default to 8000)
+CMD poetry run uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}
