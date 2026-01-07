@@ -194,8 +194,8 @@ async def ingest_telemetry(
     4. Queues AI analysis as background task
     5. Returns immediately (non-blocking)
     """
-    # Generate event ID
-    event_id = f"evt_{uuid4().hex[:16]}"
+    # Generate event ID as proper UUID for database compatibility
+    event_id = str(uuid4())
 
     logger.info(
         f"Received telemetry: type={payload.type}, severity={payload.severity}, "
@@ -269,7 +269,8 @@ async def log_evidence(
     - AUDIT_ACCESS: Authentication events (user_id, action, resource)
     - AUDIT_CONFIG: Configuration changes (setting, old_value, new_value)
     """
-    evidence_id = f"evi_{uuid4().hex[:16]}"
+    # Generate evidence ID as proper UUID for database compatibility
+    evidence_id = str(uuid4())
 
     valid_types = [
         "AUDIT_DEPLOY",
