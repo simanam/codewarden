@@ -462,3 +462,16 @@ export async function triggerSecurityScan(appId: string, scanType: string = 'ful
     body: JSON.stringify({ scan_type: scanType }),
   });
 }
+
+// Profile Repair (for users who signed up before the trigger fix)
+export interface RepairProfileResponse {
+  status: 'already_configured' | 'repaired';
+  org_id: string;
+  message: string;
+}
+
+export async function repairProfile(): Promise<RepairProfileResponse> {
+  return apiRequest<RepairProfileResponse>('/api/dashboard/repair-profile', {
+    method: 'POST',
+  });
+}

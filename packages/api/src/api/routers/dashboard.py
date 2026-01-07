@@ -300,10 +300,16 @@ async def create_app(
     try:
         from api.db import supabase
 
-        if not supabase or not user.get("org_id"):
+        if not supabase:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database not available",
+            )
+
+        if not user.get("org_id"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Organization not found",
+                detail="Your account is not linked to an organization. Please contact support or try signing out and back in.",
             )
 
         # Generate slug from name
@@ -1166,6 +1172,133 @@ async def send_event_notification(
     except Exception as e:
         logger.exception(f"Failed to send notification: {e}")
         raise HTTPException(status_code=500, detail="Failed to send notification")
+
+
+# ============================================
+# User Profile Repair (for accounts created before trigger fix)
+# ============================================
+
+
+@router.post("/repair-profile")
+async def repair_user_profile(
+    authorization: str | None = Header(None),
+) -> dict[str, Any]:
+    """Repair a user's profile by creating missing organization.
+
+    This endpoint is for users whose accounts were created before the
+    trigger fix and are missing their organization.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid authorization token",
+        )
+
+    token = authorization[7:]
+
+    try:
+        from api.db import supabase
+
+        if not supabase:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database not configured",
+            )
+
+        # Verify token with Supabase
+        user_response = supabase.auth.get_user(token)
+
+        if not user_response or not user_response.user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token",
+            )
+
+        user = user_response.user
+
+        # Check if user already has a profile with org
+        profile_result = (
+            supabase.table("user_profiles")
+            .select("org_id")
+            .eq("id", user.id)
+            .single()
+            .execute()
+        )
+
+        if profile_result.data and profile_result.data.get("org_id"):
+            return {
+                "status": "already_configured",
+                "org_id": profile_result.data["org_id"],
+                "message": "Your account is already linked to an organization.",
+            }
+
+        # Create organization
+        import re
+
+        display_name = (
+            user.user_metadata.get("full_name")
+            or user.user_metadata.get("name")
+            or (user.email.split("@")[0] if user.email else "User")
+        )
+
+        org_slug = re.sub(r"[^a-zA-Z0-9]+", "-", display_name.lower())
+        org_slug = f"{org_slug}-{str(user.id)[:8]}"
+
+        org_id = str(uuid4())
+        now = datetime.utcnow().isoformat()
+
+        org_data = {
+            "id": org_id,
+            "name": f"{display_name}'s Organization",
+            "slug": org_slug,
+            "plan": "hobbyist",
+            "created_at": now,
+            "updated_at": now,
+        }
+
+        org_result = supabase.table("organizations").insert(org_data).execute()
+
+        if not org_result.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create organization",
+            )
+
+        # Create or update user profile
+        if profile_result.data:
+            # Update existing profile
+            supabase.table("user_profiles").update(
+                {"org_id": org_id, "updated_at": now}
+            ).eq("id", user.id).execute()
+        else:
+            # Create new profile
+            profile_data = {
+                "id": user.id,
+                "org_id": org_id,
+                "display_name": display_name,
+                "avatar_url": user.user_metadata.get("avatar_url"),
+                "role": "owner",
+                "created_at": now,
+                "updated_at": now,
+            }
+            supabase.table("user_profiles").insert(profile_data).execute()
+
+        logger.info(f"Repaired profile for user {user.id}, created org {org_id}")
+
+        return {
+            "status": "repaired",
+            "org_id": org_id,
+            "message": "Your account has been repaired. Please refresh the page.",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to repair profile: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to repair profile",
+        )
 
 
 # ============================================

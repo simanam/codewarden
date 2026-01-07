@@ -12,7 +12,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { AlertTriangle, CheckCircle, Layers, TrendingUp, Loader2, ArrowRight, BookOpen, Bell, FolderPlus } from 'lucide-react';
-import { getDashboardStats, getEvents, type DashboardStats, type Event } from '@/lib/api/client';
+import { getDashboardStats, getEvents, repairProfile, type DashboardStats, type Event } from '@/lib/api/client';
 import Link from 'next/link';
 
 function formatTime(timestamp: string) {
@@ -33,6 +33,7 @@ export default function DashboardPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [repairing, setRepairing] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -46,7 +47,26 @@ export default function DashboardPage() {
         setEvents(eventsData);
       } catch (err) {
         console.error('Failed to load dashboard data:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load data');
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load data';
+
+        // If the error is about missing organization, try to repair the profile
+        if (errorMessage.includes('not linked to an organization') || errorMessage.includes('Organization not found')) {
+          setRepairing(true);
+          try {
+            const result = await repairProfile();
+            if (result.status === 'repaired') {
+              // Profile repaired, reload the page
+              window.location.reload();
+              return;
+            }
+          } catch (repairErr) {
+            console.error('Failed to repair profile:', repairErr);
+          } finally {
+            setRepairing(false);
+          }
+        }
+
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -86,15 +106,18 @@ export default function DashboardPage() {
     },
   ];
 
-  if (loading) {
+  if (loading || repairing) {
     return (
       <div className="flex flex-col h-full">
         <Header
           title="Dashboard"
           description="Monitor your application health and security"
         />
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex-1 flex flex-col items-center justify-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          {repairing && (
+            <p className="text-sm text-muted-foreground">Setting up your account...</p>
+          )}
         </div>
       </div>
     );
