@@ -16,6 +16,7 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
+    environment: prod
 
     steps:
       - uses: actions/checkout@v4
@@ -78,6 +79,7 @@ jobs:
     name: Run Migrations
     needs: test
     runs-on: ubuntu-latest
+    environment: prod
     if: github.ref == 'refs/heads/main'
 
     steps:
@@ -108,6 +110,7 @@ jobs:
     name: Deploy API
     needs: migrate
     runs-on: ubuntu-latest
+    environment: prod
     if: github.ref == 'refs/heads/main'
 
     steps:
@@ -131,6 +134,7 @@ jobs:
     name: Deploy Dashboard
     needs: migrate
     runs-on: ubuntu-latest
+    environment: prod
     if: github.ref == 'refs/heads/main'
 
     steps:
