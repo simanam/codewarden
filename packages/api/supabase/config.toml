@@ -1,9 +1,5 @@
 # Supabase CLI Configuration
-# This file is used by supabase db push to apply migrations
-# The project_id is set via supabase link in CI/CD
-
-[project]
-id = ""  # Set via `supabase link --project-ref`
+# Project ID is set via `supabase link --project-ref` in CI/CD
 
 [api]
 enabled = true
