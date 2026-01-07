@@ -218,12 +218,12 @@ jobs:
       - name: Install dependencies
         run: |
           cd packages/sdk-js
-          npm install
+          npm ci
 
       - name: Build package
         run: |
           cd packages/sdk-js
-          ./node_modules/.bin/tsup
+          npm run build
 
       - name: Publish to npm
         run: |
