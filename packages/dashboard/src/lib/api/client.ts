@@ -312,9 +312,8 @@ export interface ComplianceStatus {
 }
 
 export async function getComplianceStatus(appId?: string): Promise<ComplianceStatus> {
-  if (appId) {
-    return apiRequest<ComplianceStatus>(`/api/dashboard/apps/${appId}/compliance`);
-  }
+  // Compliance is org-wide only - no per-app endpoint exists
+  // The appId parameter is kept for future per-app filtering if needed
   return apiRequest<ComplianceStatus>('/api/dashboard/compliance');
 }
 
@@ -440,9 +439,8 @@ export interface SecurityScanList {
 }
 
 export async function getSecurityStats(appId?: string): Promise<SecurityStats> {
-  if (appId) {
-    return apiRequest<SecurityStats>(`/api/dashboard/apps/${appId}/security/stats`);
-  }
+  // Always use org-wide stats endpoint - it aggregates from all apps anyway
+  // Per-app stats would come from the security summary endpoint
   return apiRequest<SecurityStats>('/api/dashboard/security/stats');
 }
 
@@ -468,7 +466,7 @@ export async function getAppScans(appId: string, options?: {
 }
 
 export async function triggerSecurityScan(appId: string, scanType: string = 'full'): Promise<SecurityScan> {
-  return apiRequest<SecurityScan>(`/api/dashboard/apps/${appId}/scan`, {
+  return apiRequest<SecurityScan>(`/api/dashboard/apps/${appId}/scans`, {
     method: 'POST',
     body: JSON.stringify({ scan_type: scanType }),
   });

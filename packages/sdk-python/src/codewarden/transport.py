@@ -7,13 +7,55 @@ import logging
 import queue
 import threading
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
-from codewarden.exceptions import TransportError
+from codewarden.exceptions import ConfigurationError
 from codewarden.types import Event
 
 logger = logging.getLogger(__name__)
+
+
+def parse_dsn(dsn: str) -> tuple[str, str]:
+    """
+    Parse a CodeWarden DSN into base URL and API key.
+
+    DSN format: https://API_KEY@host/path or just https://host/path with separate API key
+
+    Examples:
+        - https://cw_live_abc123@api.codewarden.io/v1/telemetry
+        - https://cw_live_abc123@localhost:8000/v1/telemetry
+        - https://api.codewarden.io/v1/telemetry (API key in URL or separate)
+
+    Args:
+        dsn: The Data Source Name string
+
+    Returns:
+        Tuple of (base_url, api_key)
+
+    Raises:
+        ConfigurationError: If DSN is invalid
+    """
+    if not dsn:
+        raise ConfigurationError("DSN cannot be empty")
+
+    parsed = urlparse(dsn)
+
+    # Extract API key from URL if present (username part)
+    api_key = parsed.username or ""
+
+    # Build base URL without credentials
+    if parsed.username:
+        # Rebuild URL without the username (API key)
+        netloc = parsed.hostname or ""
+        if parsed.port:
+            netloc = f"{netloc}:{parsed.port}"
+        base_url = f"{parsed.scheme}://{netloc}"
+    else:
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+
+    return base_url, api_key
 
 
 class Transport:
@@ -34,7 +76,7 @@ class Transport:
         Initialize the transport.
 
         Args:
-            dsn: Data Source Name for the ingest endpoint
+            dsn: Data Source Name (e.g., https://API_KEY@api.codewarden.io)
             max_queue_size: Maximum events to queue
             batch_size: Events per batch
             flush_interval: Seconds between flushes
@@ -42,7 +84,7 @@ class Transport:
             max_retries: Maximum retry attempts
             debug: Enable debug logging
         """
-        self._dsn = dsn
+        self._base_url, self._api_key = parse_dsn(dsn)
         self._batch_size = batch_size
         self._flush_interval = flush_interval
         self._timeout = timeout
@@ -83,8 +125,8 @@ class Transport:
             except queue.Empty:
                 break
 
-        if events:
-            self._send_batch(events)
+        for event in events:
+            self._send_event(event)
 
     def close(self) -> None:
         """Close the transport and flush pending events."""
@@ -93,45 +135,117 @@ class Transport:
         self._client.close()
 
     def _worker_loop(self) -> None:
-        """Background worker that batches and sends events."""
+        """Background worker that sends events."""
         while not self._shutdown.is_set():
-            events: list[Event] = []
-
-            # Collect batch
             try:
-                # Wait for first event with timeout
+                # Wait for event with timeout
                 event = self._queue.get(timeout=self._flush_interval)
-                events.append(event)
-
-                # Collect more events if available
-                while len(events) < self._batch_size:
-                    try:
-                        event = self._queue.get_nowait()
-                        events.append(event)
-                    except queue.Empty:
-                        break
+                self._send_event(event)
             except queue.Empty:
                 continue
 
-            if events:
-                self._send_batch(events)
+    def _transform_event_to_payload(self, event: Event) -> dict[str, Any]:
+        """
+        Transform an SDK Event to the API's TelemetryPayload format.
 
-    def _send_batch(self, events: list[Event]) -> None:
-        """Send a batch of events with retry logic."""
+        API expects:
+        {
+            "source": "backend-fastapi",
+            "type": "error",
+            "severity": "high",
+            "environment": "production",
+            "payload": { ... event data ... },
+            "timestamp": "...",
+            "trace_id": "..."
+        }
+        """
+        # Map SDK level to API type/severity
+        level = event.get("level", "info")
+        event_type = "error" if level in ("error", "warning") else "info"
+        severity_map = {
+            "error": "high",
+            "warning": "medium",
+            "info": "low",
+            "debug": "info",
+        }
+        severity = severity_map.get(level, "medium")
+
+        # Build payload with exception details
+        payload: dict[str, Any] = {
+            "message": event.get("message"),
+        }
+
+        exception = event.get("exception")
+        if exception:
+            payload["error_type"] = exception.get("type")
+            payload["error_message"] = exception.get("value")
+
+            # Extract file and line from stack trace
+            stacktrace = exception.get("stacktrace", [])
+            if stacktrace:
+                # Use the last frame (where the error occurred)
+                last_frame = stacktrace[-1]
+                payload["file"] = last_frame.get("filename")
+                payload["line"] = last_frame.get("lineno")
+
+                # Build full stack trace string
+                trace_lines = []
+                for frame in stacktrace:
+                    line = f"  File \"{frame.get('filename')}\", line {frame.get('lineno')}, in {frame.get('function')}"
+                    trace_lines.append(line)
+                    if frame.get("context_line"):
+                        trace_lines.append(f"    {frame.get('context_line')}")
+                payload["stack_trace"] = "\n".join(trace_lines)
+
+        # Add context data
+        context = event.get("context", {})
+        if context:
+            payload["context"] = context
+
+        # Add tags and extra data
+        if event.get("tags"):
+            payload["tags"] = event["tags"]
+        if event.get("extra"):
+            payload["extra"] = event["extra"]
+
+        return {
+            "source": "sdk-python",
+            "type": event_type,
+            "severity": severity,
+            "environment": event.get("environment", "production"),
+            "payload": payload,
+            "timestamp": event.get("timestamp"),
+            "trace_id": event.get("event_id"),  # Use event_id as trace_id for correlation
+        }
+
+    def _send_event(self, event: Event) -> None:
+        """Send a single event with retry logic."""
+        payload = self._transform_event_to_payload(event)
+        endpoint = f"{self._base_url}/v1/telemetry"
+
+        headers = {
+            "Content-Type": "application/json",
+        }
+
+        # Add API key authorization if present
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+
         for attempt in range(self._max_retries):
             try:
                 response = self._client.post(
-                    self._dsn,
-                    json={"events": events},
+                    endpoint,
+                    json=payload,
+                    headers=headers,
                 )
                 response.raise_for_status()
                 if self._debug:
-                    logger.debug(f"Sent {len(events)} events successfully")
+                    logger.debug(f"Sent event {event.get('event_id')} successfully")
                 return
             except httpx.HTTPStatusError as e:
                 if e.response.status_code < 500:
                     # Client error, don't retry
-                    logger.error(f"Failed to send events: {e}")
+                    logger.error(f"Failed to send event: {e.response.status_code} - {e.response.text}")
                     return
                 # Server error, retry
                 if self._debug:
@@ -140,4 +254,4 @@ class Transport:
                 if self._debug:
                     logger.warning(f"Request error (attempt {attempt + 1}): {e}")
 
-        logger.error(f"Failed to send {len(events)} events after {self._max_retries} attempts")
+        logger.error(f"Failed to send event {event.get('event_id')} after {self._max_retries} attempts")
