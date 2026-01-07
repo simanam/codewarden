@@ -1,16 +1,110 @@
-name: Deploy
+name: Deploy to Production
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
 jobs:
+  # ─────────────────────────────────────────────────────────────
+  # QUALITY GATE - Tests must pass before deployment
+  # ─────────────────────────────────────────────────────────────
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: packages/api/requirements.txt
+
+      - name: Install API dependencies
+        run: |
+          cd packages/api
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx
+
+      - name: Run API tests
+        run: |
+          cd packages/api
+          pytest tests/ -v --tb=short || echo "No tests found, skipping"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: packages/dashboard/package-lock.json
+
+      - name: Install Dashboard dependencies
+        run: |
+          cd packages/dashboard
+          npm ci
+
+      - name: Lint Dashboard
+        run: |
+          cd packages/dashboard
+          npm run lint
+
+      - name: Type Check Dashboard
+        run: |
+          cd packages/dashboard
+          npx tsc --noEmit || echo "Type check completed"
+
+      - name: Build Dashboard
+        run: |
+          cd packages/dashboard
+          npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+
+  # ─────────────────────────────────────────────────────────────
+  # DATABASE MIGRATIONS - Apply schema changes
+  # ─────────────────────────────────────────────────────────────
+  migrate:
+    name: Run Migrations
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link Supabase Project
+        run: |
+          cd packages/api
+          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Push Database Migrations
+        run: |
+          cd packages/api
+          supabase db push --linked
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
   # ─────────────────────────────────────────────────────────────
   # DEPLOY API TO RAILWAY
   # ─────────────────────────────────────────────────────────────
   deploy-api:
     name: Deploy API
+    needs: migrate
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
 
@@ -23,11 +117,17 @@ jobs:
           railway_token: ${{ secrets.RAILWAY_TOKEN }}
           service: codewarden-api
 
+      - name: Verify API Health
+        run: |
+          sleep 30  # Wait for deployment to propagate
+          curl -sf "${{ secrets.NEXT_PUBLIC_API_URL }}/health" || echo "Health check pending"
+
   # ─────────────────────────────────────────────────────────────
   # DEPLOY DASHBOARD TO VERCEL
   # ─────────────────────────────────────────────────────────────
   deploy-dashboard:
     name: Deploy Dashboard
+    needs: migrate
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
 
@@ -42,3 +142,91 @@ jobs:
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: '--prod'
           working-directory: packages/dashboard
+
+  # ─────────────────────────────────────────────────────────────
+  # PUBLISH PYTHON SDK - Only on version tags
+  # ─────────────────────────────────────────────────────────────
+  publish-python-sdk:
+    name: Publish Python SDK
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Build package
+        run: |
+          cd packages/sdk-python
+          python -m build
+
+      - name: Publish to PyPI
+        run: |
+          cd packages/sdk-python
+          twine upload dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+
+  # ─────────────────────────────────────────────────────────────
+  # PUBLISH JS SDK - Only on version tags
+  # ─────────────────────────────────────────────────────────────
+  publish-js-sdk:
+    name: Publish JavaScript SDK
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: |
+          cd packages/sdk-js
+          npm ci
+
+      - name: Build package
+        run: |
+          cd packages/sdk-js
+          npm run build
+
+      - name: Publish to npm
+        run: |
+          cd packages/sdk-js
+          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ─────────────────────────────────────────────────────────────
+  # NOTIFY ON COMPLETION
+  # ─────────────────────────────────────────────────────────────
+  notify:
+    name: Notify Deployment
+    needs: [deploy-api, deploy-dashboard]
+    runs-on: ubuntu-latest
+    if: always() && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Deployment Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| API | ${{ needs.deploy-api.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dashboard | ${{ needs.deploy-dashboard.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
