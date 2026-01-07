@@ -223,7 +223,7 @@ jobs:
       - name: Build package
         run: |
           cd packages/sdk-js
-          npm run build
+          npx tsup
 
       - name: Publish to npm
         run: |
