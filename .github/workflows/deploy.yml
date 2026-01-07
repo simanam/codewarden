@@ -35,6 +35,11 @@ jobs:
           cd packages/api
           poetry install --with dev
 
+      - name: Lint API (non-blocking)
+        run: |
+          cd packages/api
+          poetry run ruff check src/ || echo "Lint warnings found, continuing..."
+
       - name: Run API tests
         run: |
           cd packages/api
