@@ -15,7 +15,7 @@ function generateEventId(): string {
 }
 
 export class CodeWardenClient {
-  private readonly config: Required<Omit<CodeWardenConfig, 'beforeSend'>> & { beforeSend?: CodeWardenConfig['beforeSend'] };
+  private readonly config: Omit<Required<Omit<CodeWardenConfig, 'beforeSend' | 'release'>>, never> & { beforeSend?: CodeWardenConfig['beforeSend']; release?: string };
   private readonly transport: Transport;
   private readonly airlock: Airlock | null;
   private context: EventContext = {};
@@ -23,7 +23,6 @@ export class CodeWardenClient {
   constructor(config: CodeWardenConfig) {
     this.config = {
       environment: 'production',
-      release: undefined,
       debug: false,
       enablePiiScrubbing: true,
       ...config,

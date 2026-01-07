@@ -26,7 +26,7 @@ export interface NetworkSpyConfig {
   asBreadcrumbs?: boolean;
 }
 
-interface RequestInfo {
+interface CapturedRequest {
   url: string;
   method: string;
   startTime: number;
@@ -140,7 +140,7 @@ export class NetworkSpy {
         return self.originalFetch!(input, init);
       }
 
-      const requestInfo: RequestInfo = {
+      const requestInfo: CapturedRequest = {
         url,
         method: method.toUpperCase(),
         startTime: Date.now(),
@@ -199,7 +199,7 @@ export class NetworkSpy {
       const urlString = typeof url === 'string' ? url : url.toString();
 
       // Store request info on the XHR object
-      (this as XMLHttpRequest & { _cwRequest?: RequestInfo })._cwRequest = {
+      (this as XMLHttpRequest & { _cwRequest?: CapturedRequest })._cwRequest = {
         url: urlString,
         method: method.toUpperCase(),
         startTime: 0,
@@ -209,7 +209,7 @@ export class NetworkSpy {
     };
 
     XMLHttpRequest.prototype.send = function(body?: Document | XMLHttpRequestBodyInit | null): void {
-      const xhr = this as XMLHttpRequest & { _cwRequest?: RequestInfo };
+      const xhr = this as XMLHttpRequest & { _cwRequest?: CapturedRequest };
       const requestInfo = xhr._cwRequest;
 
       if (!requestInfo || !self.shouldCapture(requestInfo.url)) {
@@ -272,7 +272,7 @@ export class NetworkSpy {
     return true;
   }
 
-  private report(request: RequestInfo, response: ResponseInfo): void {
+  private report(request: CapturedRequest, response: ResponseInfo): void {
     // Skip if errors only and no error
     const isError = response.status === 0 || response.status >= 400;
     if (this.config.errorsOnly && !isError) {
