@@ -50,10 +50,15 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://app.codewarden.io"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://codewarden.io",
+        "https://www.codewarden.io",
+        "https://app.codewarden.io",
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Requested-With"],
 )
 
 # Include routers
