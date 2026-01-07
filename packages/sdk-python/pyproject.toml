@@ -10,8 +10,8 @@ authors = ["CodeWarden Team <team@codewarden.io>"]
 readme = "README.md"
 license = "MIT"
 homepage = "https://codewarden.io"
-repository = "https://github.com/codewarden/codewarden-py"
-documentation = "https://docs.codewarden.io"
+repository = "https://github.com/simanam/codewarden"
+documentation = "https://codewarden.io/docs"
 keywords = ["security", "monitoring", "observability", "error-tracking", "pii"]
 classifiers = [
     "Development Status :: 4 - Beta",
