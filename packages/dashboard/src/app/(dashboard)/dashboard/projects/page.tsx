@@ -135,9 +135,12 @@ export default function ProjectsPage() {
 
   function getSetupInstructions(framework: string | undefined, apiKey: string) {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.codewarden.io';
+    // Build DSN with API key embedded in URL (new format)
+    const apiHost = apiUrl.replace(/^https?:\/\//, '');
+    const dsn = `https://${apiKey}@${apiHost}`;
 
     const pythonInstall = 'pip install codewarden';
-    const jsInstall = 'npm install @codewarden/sdk';
+    const jsInstall = 'npm install codewarden-js';
 
     switch (framework) {
       case 'fastapi':
@@ -149,10 +152,7 @@ import codewarden
 from codewarden.middleware.fastapi import CodeWardenMiddleware
 
 # Initialize CodeWarden (add before app = FastAPI())
-codewarden.init(
-    dsn="${apiKey}",
-    environment="production",
-)
+codewarden.init("${dsn}")
 
 app = FastAPI()
 
@@ -172,10 +172,7 @@ import codewarden
 from codewarden.middleware.flask import CodeWardenMiddleware
 
 # Initialize CodeWarden
-codewarden.init(
-    dsn="${apiKey}",
-    environment="production",
-)
+codewarden.init("${dsn}")
 
 app = Flask(__name__)
 
@@ -187,7 +184,7 @@ app.wsgi_app = CodeWardenMiddleware(app.wsgi_app)`,
           install: pythonInstall,
           language: 'python',
           code: `# settings.py
-CODEWARDEN_DSN = "${apiKey}"
+CODEWARDEN_DSN = "${dsn}"
 
 MIDDLEWARE = [
     'codewarden.middleware.django.CodeWardenMiddleware',
@@ -196,41 +193,38 @@ MIDDLEWARE = [
 
 # wsgi.py or manage.py
 import codewarden
-codewarden.init(
-    dsn="${apiKey}",
-    environment="production",
-)`,
+codewarden.init("${dsn}")`,
         };
       case 'nextjs':
         return {
           install: jsInstall,
           language: 'typescript',
           code: `// lib/codewarden.ts
-import { CodeWarden } from '@codewarden/sdk';
+import { CodeWarden } from 'codewarden-js';
 
-export const cw = new CodeWarden({
-  apiKey: '${apiKey}',
+const client = CodeWarden.init({
+  dsn: '${dsn}',
   environment: 'production',
 });
 
-// In your error boundary or _app.tsx
-cw.captureException(error);`,
+// In your error boundary or layout.tsx
+CodeWarden.captureException(error);`,
         };
       case 'express':
         return {
           install: jsInstall,
           language: 'javascript',
           code: `// app.js
-const { CodeWarden } = require('@codewarden/sdk');
+const { CodeWarden } = require('codewarden-js');
 
-const cw = new CodeWarden({
-  apiKey: '${apiKey}',
+CodeWarden.init({
+  dsn: '${dsn}',
   environment: 'production',
 });
 
 // Error handling middleware (add last)
 app.use((err, req, res, next) => {
-  cw.captureException(err);
+  CodeWarden.captureException(err);
   res.status(500).send('Something broke!');
 });`,
         };
@@ -241,10 +235,7 @@ app.use((err, req, res, next) => {
           code: `# For Python applications
 import codewarden
 
-codewarden.init(
-    dsn="${apiKey}",
-    environment="production",
-)
+codewarden.init("${dsn}")
 
 # Capture errors manually
 try:
