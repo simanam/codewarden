@@ -311,7 +311,10 @@ export interface ComplianceStatus {
   checks: ComplianceCheck[];
 }
 
-export async function getComplianceStatus(): Promise<ComplianceStatus> {
+export async function getComplianceStatus(appId?: string): Promise<ComplianceStatus> {
+  if (appId) {
+    return apiRequest<ComplianceStatus>(`/api/dashboard/apps/${appId}/compliance`);
+  }
   return apiRequest<ComplianceStatus>('/api/dashboard/compliance');
 }
 
@@ -436,11 +439,19 @@ export interface SecurityScanList {
   total: number;
 }
 
-export async function getSecurityStats(): Promise<SecurityStats> {
+export async function getSecurityStats(appId?: string): Promise<SecurityStats> {
+  if (appId) {
+    return apiRequest<SecurityStats>(`/api/dashboard/apps/${appId}/security/stats`);
+  }
   return apiRequest<SecurityStats>('/api/dashboard/security/stats');
 }
 
-export async function getRecentScans(limit: number = 10): Promise<SecurityScanList> {
+export async function getRecentScans(limit: number = 10, appId?: string): Promise<SecurityScanList> {
+  if (appId) {
+    const params = new URLSearchParams();
+    params.set('limit', limit.toString());
+    return apiRequest<SecurityScanList>(`/api/dashboard/apps/${appId}/scans?${params.toString()}`);
+  }
   return apiRequest<SecurityScanList>(`/api/dashboard/security/scans?limit=${limit}`);
 }
 

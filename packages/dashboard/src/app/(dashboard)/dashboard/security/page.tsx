@@ -24,6 +24,8 @@ import {
   RefreshCw,
   ArrowRight,
   Info,
+  ChevronDown,
+  FolderKanban,
 } from 'lucide-react';
 import {
   getSecurityStats,
@@ -32,6 +34,7 @@ import {
   triggerSecurityScan,
   type SecurityStats,
   type SecurityScan,
+  type App,
 } from '@/lib/api/client';
 
 function formatTime(timestamp: string | null) {
@@ -54,28 +57,48 @@ export default function SecurityPage() {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasApps, setHasApps] = useState(false);
-  const [firstAppId, setFirstAppId] = useState<string | null>(null);
+  const [apps, setApps] = useState<App[]>([]);
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
+  const [showAppSelector, setShowAppSelector] = useState(false);
+
+  const selectedApp = apps.find(app => app.id === selectedAppId);
+  const hasApps = apps.length > 0;
+
+  useEffect(() => {
+    async function loadApps() {
+      try {
+        const appsData = await getApps();
+        setApps(appsData);
+        if (appsData.length > 0 && !selectedAppId) {
+          setSelectedAppId(appsData[0].id);
+        }
+      } catch (err) {
+        console.error('Failed to load apps:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load apps');
+      }
+    }
+    loadApps();
+  }, []);
 
   useEffect(() => {
     async function loadData() {
+      if (!selectedAppId) {
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
 
-        // Fetch security stats and recent scans from API
-        const [statsData, scansData, apps] = await Promise.all([
-          getSecurityStats(),
-          getRecentScans(10),
-          getApps(),
+        // Fetch security stats and recent scans for selected app
+        const [statsData, scansData] = await Promise.all([
+          getSecurityStats(selectedAppId),
+          getRecentScans(10, selectedAppId),
         ]);
 
         setStats(statsData);
         setRecentScans(scansData.scans);
-        setHasApps(apps.length > 0);
-        if (apps.length > 0) {
-          setFirstAppId(apps[0].id);
-        }
       } catch (err) {
         console.error('Failed to load security data:', err);
         setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -85,21 +108,21 @@ export default function SecurityPage() {
     }
 
     loadData();
-  }, []);
+  }, [selectedAppId]);
 
   const handleRunScan = async (scanType: string = 'full') => {
-    if (!firstAppId) {
-      alert('No apps configured. Create an app first to run security scans.');
+    if (!selectedAppId) {
+      alert('No project selected. Select a project first to run security scans.');
       return;
     }
 
     setScanning(true);
     try {
-      await triggerSecurityScan(firstAppId, scanType);
+      await triggerSecurityScan(selectedAppId, scanType);
       // Refresh data after scan completes
       const [statsData, scansData] = await Promise.all([
-        getSecurityStats(),
-        getRecentScans(10),
+        getSecurityStats(selectedAppId),
+        getRecentScans(10, selectedAppId),
       ]);
       setStats(statsData);
       setRecentScans(scansData.scans);
@@ -138,18 +161,63 @@ export default function SecurityPage() {
         title="Security"
         description="Security scanning and vulnerability management"
         action={
-          <Button
-            onClick={() => handleRunScan('full')}
-            disabled={scanning || !hasApps}
-            className="gap-2"
-          >
-            {scanning ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
+          <div className="flex items-center gap-3">
+            {/* Project Selector */}
+            {apps.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowAppSelector(!showAppSelector)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary-800 hover:bg-secondary-700 transition-colors border border-secondary-700"
+                >
+                  <FolderKanban className="h-4 w-4 text-secondary-400" />
+                  <span className="text-sm font-medium max-w-[150px] truncate">
+                    {selectedApp?.name || 'Select Project'}
+                  </span>
+                  <ChevronDown className="h-4 w-4 text-secondary-400" />
+                </button>
+                {showAppSelector && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setShowAppSelector(false)}
+                    />
+                    <div className="absolute right-0 top-full mt-1 w-64 bg-secondary-800 border border-secondary-700 rounded-lg shadow-lg z-20 py-1 max-h-64 overflow-auto">
+                      {apps.map(app => (
+                        <button
+                          key={app.id}
+                          onClick={() => {
+                            setSelectedAppId(app.id);
+                            setShowAppSelector(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-secondary-700 transition-colors flex items-center gap-2 ${
+                            app.id === selectedAppId ? 'bg-primary-500/10 text-primary-400' : ''
+                          }`}
+                        >
+                          <FolderKanban className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">{app.name}</span>
+                          {app.framework && (
+                            <span className="text-xs text-secondary-500 ml-auto">{app.framework}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             )}
-            Run Full Scan
-          </Button>
+            <Button
+              onClick={() => handleRunScan('full')}
+              disabled={scanning || !hasApps}
+              className="gap-2"
+            >
+              {scanning ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Run Full Scan
+            </Button>
+          </div>
         }
       />
 

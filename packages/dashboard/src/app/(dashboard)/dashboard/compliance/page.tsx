@@ -27,14 +27,17 @@ import {
   Settings,
   AlertCircle,
   Info,
+  ChevronDown,
+  FolderKanban,
 } from 'lucide-react';
 import {
   getComplianceStatus,
-  getAllEvidenceEvents,
+  getEvidenceEvents,
   getApps,
   requestEvidenceExport,
   type ComplianceCheck,
   type EvidenceEvent,
+  type App,
 } from '@/lib/api/client';
 
 function formatTime(timestamp: string | null) {
@@ -63,30 +66,46 @@ export default function CompliancePage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [hasApps, setHasApps] = useState(false);
-  const [firstAppId, setFirstAppId] = useState<string | null>(null);
+  const [apps, setApps] = useState<App[]>([]);
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
+  const [showAppSelector, setShowAppSelector] = useState(false);
+
+  const selectedApp = apps.find(app => app.id === selectedAppId);
+  const hasApps = apps.length > 0;
+
+  useEffect(() => {
+    async function loadApps() {
+      try {
+        const appsData = await getApps();
+        setApps(appsData);
+        if (appsData.length > 0 && !selectedAppId) {
+          setSelectedAppId(appsData[0].id);
+        }
+      } catch (err) {
+        console.error('Failed to load apps:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load apps');
+      }
+    }
+    loadApps();
+  }, []);
 
   useEffect(() => {
     async function loadData() {
+      if (!selectedAppId) {
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
 
-        // Fetch compliance status from API
-        const [complianceData, apps] = await Promise.all([
-          getComplianceStatus(),
-          getApps(),
-        ]);
-
-        setHasApps(apps.length > 0);
-        if (apps.length > 0) {
-          setFirstAppId(apps[0].id);
-        }
+        // Fetch compliance status for selected app
+        const complianceData = await getComplianceStatus(selectedAppId);
 
         // Map API response to component state
         setChecks(complianceData.checks.map(check => ({
           ...check,
-          // Map snake_case to camelCase for lastChecked
           last_checked: check.last_checked,
         })));
         setComplianceScore(complianceData.score);
@@ -94,15 +113,12 @@ export default function CompliancePage() {
         setFailingCount(complianceData.failing_count);
         setNotConfiguredCount(complianceData.not_configured_count);
 
-        // Fetch evidence events
-        if (apps.length > 0) {
-          try {
-            const evidenceData = await getAllEvidenceEvents({ limit: 10 });
-            setEvents(evidenceData);
-          } catch {
-            // No evidence events yet
-            setEvents([]);
-          }
+        // Fetch evidence events for selected app
+        try {
+          const evidenceData = await getEvidenceEvents(selectedAppId, { limit: 10 });
+          setEvents(evidenceData.events);
+        } catch {
+          setEvents([]);
         }
       } catch (err) {
         console.error('Failed to load compliance data:', err);
@@ -113,17 +129,17 @@ export default function CompliancePage() {
     }
 
     loadData();
-  }, []);
+  }, [selectedAppId]);
 
   const handleExport = async (format: 'json' | 'csv' | 'pdf') => {
-    if (!firstAppId) {
-      alert('No apps configured. Create an app first to export evidence.');
+    if (!selectedAppId) {
+      alert('No project selected. Select a project first to export evidence.');
       return;
     }
 
     setExporting(format);
     try {
-      const result = await requestEvidenceExport(firstAppId, { format });
+      const result = await requestEvidenceExport(selectedAppId, { format });
       alert(`Export started (ID: ${result.id}). You'll receive a download link when it's ready.`);
     } catch (err) {
       console.error('Export failed:', err);
@@ -159,6 +175,50 @@ export default function CompliancePage() {
       <Header
         title="Compliance"
         description="SOC 2 readiness and evidence management"
+        action={
+          apps.length > 0 ? (
+            <div className="relative">
+              <button
+                onClick={() => setShowAppSelector(!showAppSelector)}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary-800 hover:bg-secondary-700 transition-colors border border-secondary-700"
+              >
+                <FolderKanban className="h-4 w-4 text-secondary-400" />
+                <span className="text-sm font-medium max-w-[150px] truncate">
+                  {selectedApp?.name || 'Select Project'}
+                </span>
+                <ChevronDown className="h-4 w-4 text-secondary-400" />
+              </button>
+              {showAppSelector && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setShowAppSelector(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-1 w-64 bg-secondary-800 border border-secondary-700 rounded-lg shadow-lg z-20 py-1 max-h-64 overflow-auto">
+                    {apps.map(app => (
+                      <button
+                        key={app.id}
+                        onClick={() => {
+                          setSelectedAppId(app.id);
+                          setShowAppSelector(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-secondary-700 transition-colors flex items-center gap-2 ${
+                          app.id === selectedAppId ? 'bg-primary-500/10 text-primary-400' : ''
+                        }`}
+                      >
+                        <FolderKanban className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">{app.name}</span>
+                        {app.framework && (
+                          <span className="text-xs text-secondary-500 ml-auto">{app.framework}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : undefined
+        }
       />
 
       <div className="flex-1 p-6 space-y-6 overflow-auto">
