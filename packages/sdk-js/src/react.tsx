@@ -32,13 +32,13 @@ interface ErrorBoundaryState {
  * ```
  */
 export class CodeWardenErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { error: null };
+  override state: ErrorBoundaryState = { error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { error };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+  override componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     // Capture to CodeWarden
     try {
       CodeWarden.captureException(error);
@@ -54,7 +54,7 @@ export class CodeWardenErrorBoundary extends Component<ErrorBoundaryProps, Error
     this.setState({ error: null });
   };
 
-  render(): ReactNode {
+  override render(): ReactNode {
     const { error } = this.state;
     const { children, fallback } = this.props;
 
