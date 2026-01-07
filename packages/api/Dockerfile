@@ -29,5 +29,5 @@ RUN poetry install --no-interaction
 # Expose port
 EXPOSE 8000
 
-# Run the application using shell to expand $PORT env var
-CMD ["/bin/sh", "-c", "poetry run uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Run the application on port 8000 (Railway will map $PORT externally)
+CMD ["poetry", "run", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
